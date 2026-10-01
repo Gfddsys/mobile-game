@@ -1,0 +1,59 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1e4a520a9e5a4a74da09299ac0a9a952, type: 3}
+  m_Name: GameConfig
+  m_EditorClassIdentifier: TurtleBlaster.Runtime::TurtleBlaster.GameConfig
+  gravityScale: 2.4
+  cruiseSpeed: 9
+  driveAccel: 14
+  maxSpeed: 34
+  pitchTorque: 6
+  flipTorque: 38
+  airAngularDrag: 1.2
+  thrustAccel: 20
+  thrustLift: 32
+  slamAccel: 30
+  maxWheelieAngle: 12
+  maxNoseDownAngle: 8
+  groundLevelStiffness: 0.8
+  groundLevelDamping: 12
+  groundLevelMaxTorque: 60
+  bodyCrashSpeed: 3
+  perfectAngle: 12
+  roughAngle: 35
+  perfectSpeedBoost: 0.25
+  perfectFuelRefund: 0.05
+  roughSpeedPenalty: 0.2
+  minAirTimeForLanding: 0.25
+  stuntPerFlip: 0.34
+  superBoostDuration: 5
+  superBoostSpeedMult: 1.7
+  flipThreshold: 330
+  baseFuelCapacity: 100
+  thrustFuelPerSecond: 16
+  lightHitSpeedLoss: 0.35
+  stallSpeed: 0.7
+  stallTimeToGameOver: 3.5
+  pointsPerMeter: 1
+  pointsPerFlip: 150
+  pointsPerPerfect: 200
+  pointsPerCoin: 10
+  pointsPerPart: 50
+  pointsGrindPerSecond: 120
+  coinsPerCoinPickup: 1
+  chunkWidth: 24
+  sampleSpacing: 0.5
+  minHillLength: 12
+  maxHillLength: 30
+  minHillDelta: 1.5
+  maxHillDelta: 5
+  difficultyRampMeters: 1500
