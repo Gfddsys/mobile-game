@@ -1,8 +1,12 @@
+<<<<<<< HEAD
 # This .gitignore file should be placed at the root of your Unity project directory
 #
 # Get latest from https://github.com/github/gitignore/blob/main/Unity.gitignore
 #
 .utmp/
+=======
+# Unity generated
+>>>>>>> master
 /[Ll]ibrary/
 /[Tt]emp/
 /[Oo]bj/
@@ -10,6 +14,7 @@
 /[Bb]uilds/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
+<<<<<<< HEAD
 *.log
 
 # MemoryCaptures can get excessive in size.
@@ -39,10 +44,23 @@ ExportedObj/
 *.sln
 *.suo
 *.tmp
+=======
+/[Mm]emory[Cc]aptures/
+/[Rr]ecordings/
+
+# IDE
+/.vs/
+/.idea/
+/.vscode/
+*.csproj
+*.sln
+*.suo
+>>>>>>> master
 *.user
 *.userprefs
 *.pidb
 *.booproj
+<<<<<<< HEAD
 *.svd
 *.pdb
 *.mdb
@@ -73,3 +91,21 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
+=======
+
+# Build outputs
+*.apk
+*.aab
+*.unitypackage
+*.app
+*.pdb
+*.mdb
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Claude Code local settings
+/.claude/
+TestResults-*.xml
+>>>>>>> master
