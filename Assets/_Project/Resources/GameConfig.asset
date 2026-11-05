@@ -27,9 +27,9 @@ MonoBehaviour:
   groundLevelStiffness: 0.8
   groundLevelDamping: 12
   groundLevelMaxTorque: 60
-  bodyCrashSpeed: 3
-  perfectAngle: 12
-  roughAngle: 35
+  bodyCrashSpeed: 7
+  perfectAngle: 15
+  roughAngle: 55
   perfectSpeedBoost: 0.25
   perfectFuelRefund: 0.05
   roughSpeedPenalty: 0.2

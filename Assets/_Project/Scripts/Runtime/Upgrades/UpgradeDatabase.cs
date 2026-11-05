@@ -99,9 +99,9 @@ namespace TurtleBlaster
                 valueLabel = "Hits",
                 tiers = new List<UpgradeTier>
                 {
-                    new UpgradeTier { name = "No Protection",   coinCost = 0,   partCost = 0, value = 0, value2 = 1.0f },
-                    new UpgradeTier { name = "Knee Pads",       coinCost = 100, partCost = 1, value = 1, value2 = 0.5f },
-                    new UpgradeTier { name = "Reinforced Shell", coinCost = 320, partCost = 3, value = 2, value2 = 0.3f },
+                    new UpgradeTier { name = "Duct-Tape Pads", coinCost = 0,   partCost = 0, value = 1, value2 = 1.0f },
+                    new UpgradeTier { name = "Knee Pads",       coinCost = 100, partCost = 1, value = 2, value2 = 0.5f },
+                    new UpgradeTier { name = "Reinforced Shell", coinCost = 320, partCost = 3, value = 3, value2 = 0.3f },
                 }
             };
 

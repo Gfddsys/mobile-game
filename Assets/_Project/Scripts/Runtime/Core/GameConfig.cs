@@ -58,11 +58,11 @@ namespace TurtleBlaster
         public float groundLevelDamping = 12f;
         public float groundLevelMaxTorque = 60f;
         [Tooltip("Shell/deck touching the ground faster than this (m/s) is a fatal crash")]
-        public float bodyCrashSpeed = 3f;
+        public float bodyCrashSpeed = 7f;
 
         [Header("Landing (GDD 3.3)")]
-        public float perfectAngle = 12f;
-        public float roughAngle = 35f;
+        public float perfectAngle = 15f;
+        public float roughAngle = 55f;
         public float perfectSpeedBoost = 0.25f;
         [Tooltip("Seconds the Perfect Landing speed boost is sustained (it eases out during the last second)")]
         public float perfectBoostDuration = 2.5f;
@@ -85,7 +85,9 @@ namespace TurtleBlaster
 
         [Header("Hazards")]
         [Tooltip("Speed lost when hitting a light obstacle with no protection")]
-        public float lightHitSpeedLoss = 0.35f;
+        public float lightHitSpeedLoss = 0.25f;
+        [Tooltip("Seconds of immunity to light obstacles after a hit, so one scrape cannot chain into a crash")]
+        public float hitInvulnTime = 1.2f;
         public float stallSpeed = 0.7f;
         public float stallTimeToGameOver = 3.5f;
 

@@ -175,7 +175,7 @@ namespace TurtleBlaster.Tests
             save.TryUpgrade(UpgradeId.SafetyShell);
             gm.StartRun();
             yield return null;
-            Assert.AreEqual(2, gm.Player.FreeHitsLeft, "Reinforced shell absorbs 2 hits");
+            Assert.AreEqual(3, gm.Player.FreeHitsLeft, "Reinforced shell absorbs 3 hits");
             Assert.AreEqual(1f, gm.Player.Fuel01, 0.001f);
         }
 
@@ -303,7 +303,7 @@ namespace TurtleBlaster.Tests
             var gm = CreateGame();
             yield return null;
             float x = 20f;
-            yield return DropAndMeasure(gm, x, gm.World.SlopeDegAt(x) + 20f, (g, a, v, sl) => { Assert.GreaterOrEqual(a, 13f); Assert.AreEqual(LandingGrade.Rough, g, "angle diff " + a); });
+            yield return DropAndMeasure(gm, x, gm.World.SlopeDegAt(x) + 32f, (g, a, v, sl) => { Assert.GreaterOrEqual(a, 13f); Assert.AreEqual(LandingGrade.Rough, g, "angle diff " + a); });
             Assert.IsTrue(gm.Player.Alive, "rough landings are survivable");
         }
 

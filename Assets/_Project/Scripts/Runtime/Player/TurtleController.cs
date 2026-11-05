@@ -68,6 +68,7 @@ namespace TurtleBlaster
         float sPitch, sFlip;           // input values ramped instead of snapping 0 -> 1
         float speedLogRemaining;       // pending speed change, as ln(factor), spread over a few physics steps
         Vector2 jumpDir; float jumpKickLeft;
+        float hitInvulnTimer;
         float landingBoostTimer;       // after a Perfect Landing the cruise target stays raised for a while
         Vector2 normalSum; int normalCount;
         Vector2 groundNormal = Vector2.up;
@@ -361,6 +362,7 @@ namespace TurtleBlaster
 
             // --- auto-cruise & terrain momentum ---
             if (landingBoostTimer > 0f) landingBoostTimer -= dt;
+            if (hitInvulnTimer > 0f) hitInvulnTimer -= dt;
             float boostFade = Mathf.Clamp01(landingBoostTimer / 1.0f);   // holds for most of the duration, then eases out
             float target = cfg.cruiseSpeed * cruiseMult * (SuperBoost ? cfg.superBoostSpeedMult : 1f) * (1f + cfg.perfectSpeedBoost * boostFade);
             if (grounded)
@@ -572,6 +574,8 @@ namespace TurtleBlaster
 
             if (hz.heavy) { Crash("Crushed by a boulder"); return; }
 
+            if (hitInvulnTimer > 0f) return;   // just got hit: ignore light obstacles for a moment
+
             var col = hz.GetComponent<Collider2D>();
 
             if (SuperBoost)
@@ -589,6 +593,7 @@ namespace TurtleBlaster
                 if (col != null) col.enabled = false;
                 QueueSpeedFactor(1f - cfg.lightHitSpeedLoss * hitLossMult);
                 hitFlash = 0.6f;
+                hitInvulnTimer = cfg.hitInvulnTime;
                 dust.Emit(10);
                 HazardHandled?.Invoke(hz, false);
                 return;
