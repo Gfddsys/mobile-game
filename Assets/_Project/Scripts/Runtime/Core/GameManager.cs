@@ -16,6 +16,11 @@ namespace TurtleBlaster
     {
         public static GameManager Instance { get; private set; }
 
+        // Assign the LevelPlayInitializer GameObject in the Inspector.
+        // Enter your App Key on the LevelPlayInitializer component itself,
+        // NOT here - that keeps your ad credentials in one place.
+        [SerializeField] private LevelPlayInitializer levelPlayInitializer;
+
         public GameState State { get; private set; } = GameState.Menu;
         public WorldGenerator World { get; private set; }
         public TurtleController Player { get; private set; }

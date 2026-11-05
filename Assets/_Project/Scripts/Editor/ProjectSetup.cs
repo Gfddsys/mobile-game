@@ -95,6 +95,49 @@ namespace TurtleBlaster.EditorTools
             Debug.Log("[TurtleBlaster] Created " + ScenePath);
         }
 
+        const string LevelPlayAppKey = "28c4a79cd";
+
+        /// <summary>
+        /// Adds a persistent "Ads" GameObject with LevelPlayInitializer (App Key filled in) to Game.unity
+        /// and links it to GameManager. Safe to run again: it reuses an existing Ads object.
+        /// </summary>
+        [MenuItem("Turtle Blaster/Setup/4. Add LevelPlay Ads Object (init + rewarded)")]
+        public static void AddLevelPlayAdsObject()
+        {
+            var scene = EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
+
+            var init = Object.FindFirstObjectByType<LevelPlayInitializer>();
+            if (init == null)
+            {
+                var go = new GameObject("Ads");
+                init = go.AddComponent<LevelPlayInitializer>();
+                Undo.RegisterCreatedObjectUndo(go, "Add LevelPlay Ads Object");
+            }
+
+            // rewarded ads (revive + x2 coins) live on the same persistent object
+            if (init.GetComponent<RewardedAdManager>() == null)
+                Undo.AddComponent<RewardedAdManager>(init.gameObject);
+
+            var so = new SerializedObject(init);
+            var key = so.FindProperty("appKey");
+            if (string.IsNullOrEmpty(key.stringValue)) key.stringValue = LevelPlayAppKey;
+            so.ApplyModifiedPropertiesWithoutUndo();
+
+            var gm = Object.FindFirstObjectByType<GameManager>();
+            if (gm != null)
+            {
+                var gso = new SerializedObject(gm);
+                gso.FindProperty("levelPlayInitializer").objectReferenceValue = init;
+                gso.ApplyModifiedPropertiesWithoutUndo();
+            }
+            else Debug.LogWarning("[TurtleBlaster] No GameManager in " + ScenePath + " - run Setup / 3. Create Game Scene first.");
+
+            EditorSceneManager.MarkSceneDirty(scene);
+            EditorSceneManager.SaveScene(scene);
+            Selection.activeObject = init.gameObject;
+            Debug.Log("[TurtleBlaster] LevelPlay Ads object ready in " + ScenePath + " (App Key: " + so.FindProperty("appKey").stringValue + ").");
+        }
+
         [MenuItem("Turtle Blaster/Debug/Reset Save Data")]
         public static void ResetSave()
         {

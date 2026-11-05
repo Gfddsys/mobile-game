@@ -2,7 +2,8 @@
   "name": "TurtleBlaster.Runtime",
   "rootNamespace": "TurtleBlaster",
   "references": [
-    "UnityEngine.UI"
+    "UnityEngine.UI",
+    "Unity.LevelPlay"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

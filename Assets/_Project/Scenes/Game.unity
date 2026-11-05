@@ -152,12 +152,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: TurtleBlaster.Runtime::TurtleBlaster.CameraFollow
   baseSize: 6.2
   maxExtraSize: 3.2
-  cam: {fileID: 0}
-  target: {fileID: 0}
-  shake: 0
-  velY: 0
-  size: 0
-  pos: {x: 0, y: 0, z: 0}
 --- !u!81 &111311622
 AudioListener:
   m_ObjectHideFlags: 0
@@ -261,18 +255,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 97f6d61193c38d548b20a586e4af5ec6, type: 3}
   m_Name: 
   m_EditorClassIdentifier: TurtleBlaster.Runtime::TurtleBlaster.GameManager
-  <State>k__BackingField: 0
-  <World>k__BackingField: {fileID: 0}
-  <Player>k__BackingField: {fileID: 0}
-  <Cam>k__BackingField: {fileID: 0}
-  <UI>k__BackingField: {fileID: 0}
-  <Combo>k__BackingField: 0
-  cfg: {fileID: 0}
-  bonusScore: 0
-  grindScore: 0
-  startX: 0
-  menuResetTimer: 0
-  snapshot: {fileID: 0}
+  levelPlayInitializer: {fileID: 1325603562}
 --- !u!4 &375618919
 Transform:
   m_ObjectHideFlags: 0
@@ -288,9 +271,70 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1325603561
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1325603563}
+  - component: {fileID: 1325603562}
+  - component: {fileID: 1325603564}
+  m_Layer: 0
+  m_Name: Ads
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1325603562
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1325603561}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f9924cfeb0d82414a9e99596e801f09f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: TurtleBlaster.Runtime::TurtleBlaster.LevelPlayInitializer
+  appKey: 28c4a79cd
+--- !u!4 &1325603563
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1325603561}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &1325603564
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1325603561}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1f3277b25fbe5eb4897fa54a530543b2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: TurtleBlaster.Runtime::TurtleBlaster.RewardedAdManager
+  adUnitId: 47vhqd4idq0opuxu
+  retryDelaySeconds: 30
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
   - {fileID: 111311624}
   - {fileID: 375618919}
+  - {fileID: 1325603563}
