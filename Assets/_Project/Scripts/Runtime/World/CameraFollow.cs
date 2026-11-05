@@ -15,7 +15,7 @@ namespace TurtleBlaster
         Camera cam;
         Transform target;
         float shake;
-        float velY;
+        float velX, velY, velSize;
         float size;
         Vector3 pos;
 
@@ -47,7 +47,7 @@ namespace TurtleBlaster
             size = baseSize;
             cam.orthographicSize = size;
             pos = Desired(target.position);
-            velY = 0f;
+            velX = velY = velSize = 0f;
             transform.position = pos;
         }
 
@@ -67,11 +67,11 @@ namespace TurtleBlaster
             var rb = target.GetComponent<Rigidbody2D>();
             if (rb != null) speed = rb.linearVelocity.magnitude;
             float targetSize = baseSize + Mathf.Clamp((speed - 9f) * 0.14f, 0f, maxExtraSize);
-            size = Mathf.Lerp(size, targetSize, 1f - Mathf.Exp(-2f * Time.unscaledDeltaTime));
+            size = Mathf.SmoothDamp(size, targetSize, ref velSize, 0.7f, Mathf.Infinity, Time.unscaledDeltaTime);
             cam.orthographicSize = size;
 
             var want = Desired(target.position);
-            pos.x = Mathf.Lerp(pos.x, want.x, 1f - Mathf.Exp(-9f * Time.unscaledDeltaTime));
+            pos.x = Mathf.SmoothDamp(pos.x, want.x, ref velX, 0.14f, Mathf.Infinity, Time.unscaledDeltaTime);
             pos.y = Mathf.SmoothDamp(pos.y, want.y, ref velY, 0.22f, Mathf.Infinity, Time.unscaledDeltaTime);
 
             var offset = Vector3.zero;

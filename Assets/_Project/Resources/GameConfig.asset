@@ -51,7 +51,7 @@ MonoBehaviour:
   pointsGrindPerSecond: 120
   coinsPerCoinPickup: 1
   chunkWidth: 24
-  sampleSpacing: 0.5
+  sampleSpacing: 0.25
   minHillLength: 12
   maxHillLength: 30
   minHillDelta: 1.5

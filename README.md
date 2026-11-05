@@ -105,6 +105,13 @@ SuperBoostChanged, Grinding, Crashed) แล้วจัดการคะแน
 แก้ `Resources/GameConfig.asset` (Inspector) — ความเร็ว, แรงไอพ่น, มุม Landing, ความถี่สิ่งกีดขวาง, คะแนน ฯลฯ  
 ตารางอัปเกรด/ราคา: `Upgrades/UpgradeDatabase.cs`
 
+### ความสมูทของการควบคุม/ฟิสิกส์ (Smoothness)
+ค่าที่ปรับได้อยู่ใน `GameConfig` หมวด **Smoothness** — ใช้ `SmoothnessTests` (log ขึ้นต้น `[SMOOTH]`) วัดก่อน/หลังปรับค่า
+- โบนัส/โทษความเร็ว (Perfect +25%, Rough −20%, ชนของเบา) ถูกค่อยๆ ผสมเข้าภายใน ~0.3 วินาที แทนการคูณความเร็วทันที และโบนัส Perfect คงอยู่ ~2.5 วินาที
+- แรงหมุน (pitch/flip) ไล่ระดับ 0→เต็มใน 0.07 วินาที, สลับการควบคุมพื้น↔อากาศแบบค่อยเป็นค่อยไป, มุมความลาดของพื้นผ่าน low-pass กันบอร์ดสั่น
+- แรงกระโดดกระจายออกใน 0.08 วินาที, กล้องใช้ SmoothDamp ทั้งแกน X/Y และ zoom, แถบ Fuel/Stunt เลื่อนนุ่ม
+- Air assist (`airAssistStrength`): ตัวช่วยจัดระนาบอ่อนๆ ในอากาศ ทำงานเฉพาะตอนไม่ได้ตีลังกาและไม่ได้หมุนอยู่ — กระโดดธรรมดาลงพื้นเรียบ แต่ท่าตีลังกายังเป็นแรงเฉื่อยล้วนตาม GDD (ตั้ง 0 เพื่อปิด)
+
 ### เปลี่ยนงานภาพ
 ตอนนี้สไปรต์ทั้งหมดเป็น placeholder ที่วาดด้วยโค้ด (`Art/SpriteLibrary.cs`)
 1. เมนู **Turtle Blaster ▸ Art ▸ Export Placeholder Sprites to PNG** → ได้ PNG ที่ `Art/Placeholders/` (ขนาดและ PPU ถูกต้อง)

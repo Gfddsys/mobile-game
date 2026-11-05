@@ -61,6 +61,14 @@ namespace TurtleBlaster
         float fuel;
         bool contactThisStep, onRailThisStep, grounded, onRail;
         float groundedTimer, airTime, jumpBuffer, jumpCooldownTimer;
+
+        // smoothing state (see the Smoothness section of GameConfig)
+        float smoothSlopeDeg;          // low-pass filtered ground slope angle
+        float levelWeight;             // 1 = on the ground (self-levelling), 0 = in the air (free rotation)
+        float sPitch, sFlip;           // input values ramped instead of snapping 0 -> 1
+        float speedLogRemaining;       // pending speed change, as ln(factor), spread over a few physics steps
+        Vector2 jumpDir; float jumpKickLeft;
+        float landingBoostTimer;       // after a Perfect Landing the cruise target stays raised for a while
         Vector2 normalSum; int normalCount;
         Vector2 groundNormal = Vector2.up;
         float lastAngle, rotAccum;
@@ -248,7 +256,8 @@ namespace TurtleBlaster
                 var n = normalCount > 0 || groundNormal.sqrMagnitude > 0f ? groundNormal : Vector2.up;
                 var v = rb.linearVelocity;
                 if (v.y < 0f) v.y = 0f;                       // cancel downhill sink so every jump has the same height
-                rb.linearVelocity = v + n * cfg.jumpSpeed;
+                rb.linearVelocity = v;
+                jumpDir = n; jumpKickLeft = cfg.jumpSpeed;    // the kick is applied over ~0.08s below (no velocity snap)
                 jumpBuffer = 0f;
                 jumpCooldownTimer = cfg.jumpCooldown;
                 groundedTimer = 1f; grounded = false;         // leave the ground now (also ends coyote time)
@@ -274,29 +283,69 @@ namespace TurtleBlaster
             }
             lastAngle = ang;
 
-            // --- input ---
+            // --- input (ramped so torque never snaps on/off) ---
             float pitch = GameInput.Pitch;
             float flip = GameInput.Flip;
+            sPitch = Mathf.MoveTowards(sPitch, pitch, dt / cfg.inputRampTime);
+            sFlip = Mathf.MoveTowards(sFlip, flip, dt / cfg.inputRampTime);
             bool wantDuck = GameInput.Down;
             if (wantDuck != IsDucking) ApplyDuck(wantDuck);
 
-            if (grounded)
+            // low-pass the measured ground slope: two wheels alternately touching made it chatter
+            if (touching)
+            {
+                float measured = Mathf.Atan2(-groundNormal.x, groundNormal.y) * Mathf.Rad2Deg;
+                smoothSlopeDeg = Mathf.LerpAngle(smoothSlopeDeg, measured, 1f - Mathf.Exp(-dt * cfg.slopeFilterRate));
+            }
+
+            // hand over smoothly between ground control and air control
+            levelWeight = Mathf.MoveTowards(levelWeight, grounded ? 1f : 0f, dt * (grounded ? 12f : 7f));
+            if (levelWeight > 0.001f)
             {
                 // On the ground the board self-levels to the slope; Pitch Up/Down only leans the nose
                 // (wheelie / nose-dive) up to a limit, so riding stays controllable on a touch screen.
-                float slopeAng = Mathf.Atan2(-groundNormal.x, groundNormal.y) * Mathf.Rad2Deg;
-                float lean = pitch > 0f ? pitch * cfg.maxWheelieAngle : pitch * cfg.maxNoseDownAngle;
-                float err = Mathf.DeltaAngle(rb.rotation, slopeAng + lean);
+                float lean = sPitch > 0f ? sPitch * cfg.maxWheelieAngle : sPitch * cfg.maxNoseDownAngle;
+                float err = Mathf.DeltaAngle(rb.rotation, smoothSlopeDeg + lean);
+                err = Mathf.Sign(err) * Mathf.Max(0f, Mathf.Abs(err) - cfg.levelDeadZone);   // no twitching around the target
                 float tq = err * cfg.groundLevelStiffness - rb.angularVelocity * cfg.groundLevelDamping;
-                rb.AddTorque(Mathf.Clamp(tq, -cfg.groundLevelMaxTorque, cfg.groundLevelMaxTorque));
+                rb.AddTorque(Mathf.Clamp(tq, -cfg.groundLevelMaxTorque, cfg.groundLevelMaxTorque) * levelWeight);
             }
-            else
+            float airWeight = 1f - levelWeight;
+            if (airWeight > 0.001f)
             {
-                // In the air there is no assist: pure rotational inertia (GDD 3.2).
-                if (Mathf.Abs(pitch) > 0.01f) rb.AddTorque(pitch * cfg.pitchTorque);
-                if (Mathf.Abs(flip) > 0.01f) rb.AddTorque(flip * cfg.flipTorque);
+                // Rotation in the air is pure inertia (GDD 3.2) driven by the player's torque...
+                rb.AddTorque((sPitch * cfg.pitchTorque + sFlip * cfg.flipTorque) * airWeight);
+
+                // ...except for a weak "gyro" that levels the board when the player is NOT flipping and the
+                // board is not already spinning. A plain hop therefore lands level, while a real flip
+                // (flip input, or leftover spin) is never interfered with and still has to be caught by the player.
+                float spin = Mathf.Abs(rb.angularVelocity) * Mathf.Deg2Rad;
+                float assist = airWeight * Mathf.Clamp01(1f - Mathf.Abs(sFlip) * 4f) * Mathf.Clamp01((cfg.airAssistMaxSpin - spin) / 1f) * cfg.airAssistStrength;
+                if (assist > 0.001f)
+                {
+                    float lean2 = sPitch > 0f ? sPitch * cfg.maxWheelieAngle : sPitch * cfg.maxNoseDownAngle;
+                    float err2 = Mathf.DeltaAngle(rb.rotation, smoothSlopeDeg + lean2);
+                    float tq2 = err2 * cfg.groundLevelStiffness - rb.angularVelocity * cfg.groundLevelDamping;
+                    rb.AddTorque(Mathf.Clamp(tq2, -cfg.groundLevelMaxTorque, cfg.groundLevelMaxTorque) * assist);
+                }
             }
-            rb.angularDamping = grounded ? 0f : cfg.airAngularDrag;
+            rb.angularDamping = Mathf.Lerp(cfg.airAngularDrag, 0f, levelWeight);
+
+            // --- jump kick, spread over a few steps ---
+            if (jumpKickLeft > 0f)
+            {
+                float chunk = Mathf.Min(jumpKickLeft, cfg.jumpSpeed * dt / cfg.jumpKickTime);
+                rb.linearVelocity += jumpDir * chunk;
+                jumpKickLeft -= chunk;
+            }
+
+            // --- queued speed changes (landing boost / penalty / hit) applied gradually ---
+            if (Mathf.Abs(speedLogRemaining) > 0.0005f)
+            {
+                float part = speedLogRemaining * (1f - Mathf.Exp(-dt * cfg.speedChangeRate));
+                speedLogRemaining -= part;
+                rb.linearVelocity *= Mathf.Exp(part);
+            }
 
             // --- jet thrust (Pitch Up) ---
             Thrusting = GameInput.Up && fuel > 0f;
@@ -311,11 +360,13 @@ namespace TurtleBlaster
             if (GameInput.Down && !grounded) rb.AddForce(Vector2.down * (cfg.slamAccel * rb.mass));
 
             // --- auto-cruise & terrain momentum ---
-            float target = cfg.cruiseSpeed * cruiseMult * (SuperBoost ? cfg.superBoostSpeedMult : 1f);
+            if (landingBoostTimer > 0f) landingBoostTimer -= dt;
+            float boostFade = Mathf.Clamp01(landingBoostTimer / 1.0f);   // holds for most of the duration, then eases out
+            float target = cfg.cruiseSpeed * cruiseMult * (SuperBoost ? cfg.superBoostSpeedMult : 1f) * (1f + cfg.perfectSpeedBoost * boostFade);
             if (grounded)
             {
-                var tangent = new Vector2(groundNormal.y, -groundNormal.x);
-                if (tangent.x < 0) tangent = -tangent;
+                float sr = smoothSlopeDeg * Mathf.Deg2Rad;
+                var tangent = new Vector2(Mathf.Cos(sr), Mathf.Sin(sr));
                 float along = Vector2.Dot(rb.linearVelocity, tangent);
                 float accel = cfg.driveAccel * traction * (SuperBoost ? 2f : 1f);
                 if (along < target) rb.AddForce(tangent * (accel * rb.mass));
@@ -498,12 +549,13 @@ namespace TurtleBlaster
             switch (grade)
             {
                 case LandingGrade.Perfect:
-                    rb.linearVelocity = Vector2.ClampMagnitude(v * (1f + cfg.perfectSpeedBoost), cfg.maxSpeed * 1.1f);
+                    landingBoostTimer = cfg.perfectBoostDuration;
+                    QueueSpeedFactor(Mathf.Min(1f + cfg.perfectSpeedBoost, cfg.maxSpeed * 1.1f / Mathf.Max(0.1f, v.magnitude)));
                     fuel = Mathf.Min(fuelCapacity, fuel + fuelCapacity * cfg.perfectFuelRefund);
                     dust.Emit(8);
                     break;
                 case LandingGrade.Rough:
-                    rb.linearVelocity = v * (1f - cfg.roughSpeedPenalty);
+                    QueueSpeedFactor(1f - cfg.roughSpeedPenalty);
                     dust.Emit(18);
                     hitFlash = 0.35f;
                     break;
@@ -535,7 +587,7 @@ namespace TurtleBlaster
             {
                 freeHits--;
                 if (col != null) col.enabled = false;
-                rb.linearVelocity *= 1f - cfg.lightHitSpeedLoss * hitLossMult;
+                QueueSpeedFactor(1f - cfg.lightHitSpeedLoss * hitLossMult);
                 hitFlash = 0.6f;
                 dust.Emit(10);
                 HazardHandled?.Invoke(hz, false);
@@ -543,6 +595,12 @@ namespace TurtleBlaster
             }
 
             Crash("Hit a " + hz.DisplayName.ToLower());
+        }
+
+        /// <summary>Schedules a speed multiplier that is blended in over a few tenths of a second.</summary>
+        void QueueSpeedFactor(float factor)
+        {
+            speedLogRemaining += Mathf.Log(Mathf.Max(0.05f, factor));
         }
 
         void StartSuperBoost()

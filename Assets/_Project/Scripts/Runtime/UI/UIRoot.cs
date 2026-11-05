@@ -255,9 +255,9 @@ namespace TurtleBlaster
 
             if (p != null)
             {
-                fuelFill.fillAmount = p.Fuel01;
+                fuelFill.fillAmount = Mathf.Lerp(fuelFill.fillAmount, p.Fuel01, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
                 fuelFill.color = p.Fuel01 < 0.25f ? UIFactory.Bad : UIFactory.Good;
-                stuntFill.fillAmount = p.Stunt01;
+                stuntFill.fillAmount = Mathf.Lerp(stuntFill.fillAmount, p.Stunt01, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
                 stuntFill.color = p.SuperBoost ? Color.HSVToRGB(Mathf.Repeat(Time.time * 2f, 1f), 0.6f, 1f) : UIFactory.Blue;
                 boostBanner.enabled = p.SuperBoost;
                 if (p.SuperBoost) boostBanner.transform.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 14f) * 0.06f);

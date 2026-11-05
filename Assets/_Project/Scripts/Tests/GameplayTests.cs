@@ -13,6 +13,7 @@ namespace TurtleBlaster.Tests
     {
         GameObject root;
 
+
         [SetUp]
         public void SetUp()
         {
@@ -271,12 +272,13 @@ namespace TurtleBlaster.Tests
         {
             var gm = CreateGame();
             yield return null;
-            // x ~ 29 is on the first downhill (see WorldGenerator.Reset)
-            float x = 29f;
+            // x ~ 20 is on the first downhill, before the first obstacles (x >= 40) (see WorldGenerator.Reset)
+            float x = 20f;
             float slope = 0f;
             yield return DropAndMeasure(gm, x, gm.World.SlopeDegAt(x) /* match terrain */, (g, a, v, sl) => { slope = sl; Assert.AreEqual(LandingGrade.Perfect, g, "angle diff was " + a + ", slope " + sl); });
             Assert.Less(slope, -3f, "test spot must be downhill");
-            Assert.Greater(gm.Player.Speed, 9f, "Perfect landing gives a speed boost");
+            yield return new WaitForSeconds(0.6f);               // the boost is blended in over a few tenths of a second
+            Assert.Greater(gm.Player.Speed, 10f, "Perfect landing gives a speed boost");
         }
 
         [UnityTest]
@@ -287,7 +289,7 @@ namespace TurtleBlaster.Tests
             gm.StartRun(77);
             yield return null;
             var rb = gm.Player.Body;
-            rb.position = new Vector2(29f, gm.World.HeightAt(29f) + 3.2f);
+            rb.position = new Vector2(20f, gm.World.HeightAt(20f) + 3.2f);
             rb.rotation = 180f;
             rb.linearVelocity = new Vector2(9f, 0f);
             float t = 0f;
@@ -300,7 +302,7 @@ namespace TurtleBlaster.Tests
         {
             var gm = CreateGame();
             yield return null;
-            float x = 29f;
+            float x = 20f;
             yield return DropAndMeasure(gm, x, gm.World.SlopeDegAt(x) + 20f, (g, a, v, sl) => { Assert.GreaterOrEqual(a, 13f); Assert.AreEqual(LandingGrade.Rough, g, "angle diff " + a); });
             Assert.IsTrue(gm.Player.Alive, "rough landings are survivable");
         }

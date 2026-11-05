@@ -34,6 +34,22 @@ namespace TurtleBlaster
         [Tooltip("A jump pressed this long (sec) before touching the ground still fires")]
         public float jumpBufferTime = 0.15f;
         public float jumpCooldown = 0.25f;
+        [Header("Smoothness")]
+        [Tooltip("Seconds for pitch/flip input to ramp from 0 to full")]
+        public float inputRampTime = 0.07f;
+        [Tooltip("How fast the measured ground slope is filtered (higher = snappier)")]
+        public float slopeFilterRate = 14f;
+        [Tooltip("Degrees of error ignored by the ground self-levelling (stops twitching)")]
+        public float levelDeadZone = 0.8f;
+        [Tooltip("Landing boost / penalty / hit slowdowns are blended in at this rate (1/sec)")]
+        public float speedChangeRate = 9f;
+        [Tooltip("Strength (0-1) of the weak air self-levelling used when not flipping; 0 = pure inertia")]
+        public float airAssistStrength = 0.35f;
+        [Tooltip("Air self-levelling switches off above this spin speed (rad/s) so flips keep their inertia")]
+        public float airAssistMaxSpin = 2.0f;
+        [Tooltip("Seconds over which the jump kick is applied")]
+        public float jumpKickTime = 0.08f;
+
         [Header("Ground handling")]
         [Tooltip("Max nose-up lean (degrees from the slope) while holding Pitch Up on the ground")]
         public float maxWheelieAngle = 12f;
@@ -48,6 +64,8 @@ namespace TurtleBlaster
         public float perfectAngle = 12f;
         public float roughAngle = 35f;
         public float perfectSpeedBoost = 0.25f;
+        [Tooltip("Seconds the Perfect Landing speed boost is sustained (it eases out during the last second)")]
+        public float perfectBoostDuration = 2.5f;
         public float perfectFuelRefund = 0.05f;
         public float roughSpeedPenalty = 0.20f;
         [Tooltip("Minimum air time (sec) for a touchdown to be judged as a landing")]
@@ -82,7 +100,7 @@ namespace TurtleBlaster
 
         [Header("World generation")]
         public float chunkWidth = 24f;
-        public float sampleSpacing = 0.5f;
+        public float sampleSpacing = 0.25f;
         public float minHillLength = 12f;
         public float maxHillLength = 30f;
         public float minHillDelta = 1.5f;
