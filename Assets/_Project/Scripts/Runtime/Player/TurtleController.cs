@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace TurtleBlaster
@@ -22,6 +23,7 @@ namespace TurtleBlaster
         public event Action<string> Crashed;                       // cause
         public event Action<PickupType> PickedUp;
         public event Action<Hazard, bool> HazardHandled;           // hazard, smashed(true) / blocked(false)
+        public event Action<Hazard> CloseCall;                     // narrowly dodged an air hazard
         public event Action<bool> SuperBoostChanged;
         public event Action<float> Grinding;                       // dt while grinding
 
@@ -39,7 +41,10 @@ namespace TurtleBlaster
         public Transform FocusTarget => ragdoll != null ? ragdoll.transform : transform;
         public Rigidbody2D Body => rb;
         public bool Shielded => shieldTimer > 0f;
+        public bool MagnetActive => magnetTimer > 0f;
+        public float MagnetTimeLeft => magnetTimer;
         public string SkinId => skin != null ? skin.id : SkinDatabase.DefaultId;
+        public SkinDef Skin => skin;
 
         // Use the body's rotation (not the interpolated transform) for physics decisions.
         Vector2 Forward => Quaternion.Euler(0f, 0f, rb.rotation) * Vector2.right;
@@ -51,13 +56,14 @@ namespace TurtleBlaster
         CircleCollider2D wheelFront, wheelRear;
         BoxCollider2D deck, hurtBox, feetBox;
         CircleCollider2D shell;
-        SpriteRenderer turtleSr, boardSr;
+        SpriteRenderer turtleSr, boardSr, auraSr;
         Transform turtleT;
         ParticleSystem exhaust, sparks, dust, boostTrail;
         GameObject ragdoll;
 
-        // upgrade-derived values
+        // upgrade & skin-derived values
         float thrustMult = 1f, fuelCapacity = 100f, burnMult = 1f, cruiseMult = 1f, traction = 1f, hitLossMult = 1f;
+        float skinBurnMult = 1f, flipSpeedMult = 1f, stuntGainMult = 1f;
         int freeHits;
 
         float fuel;
@@ -72,6 +78,7 @@ namespace TurtleBlaster
         Vector2 jumpDir; float jumpKickLeft;
         float hitInvulnTimer;
         float shieldTimer;             // full invulnerability (after a revive)
+        float magnetTimer;             // coin/part magnet power-up timer
         SkinDef skin;
         float landingBoostTimer;       // after a Perfect Landing the cruise target stays raised for a while
         Vector2 normalSum; int normalCount;
@@ -81,6 +88,12 @@ namespace TurtleBlaster
         bool landedThisAir;
         float superTimer, stallTimer;
         float hitFlash;
+
+        // visual juice: squash & stretch + ghost afterimages
+        float duckScaleY = 1f;
+        Vector2 squashStretch = Vector2.one;
+        float ghostTimer;
+        readonly List<(SpriteRenderer sr, float age)> ghosts = new List<(SpriteRenderer, float)>();
 
         // ================================================================
         // Construction
@@ -149,20 +162,35 @@ namespace TurtleBlaster
             feetBox.offset = new Vector2(0f, -0.12f);
             ApplyDuck(false);
 
-            // ---- visuals ----
+            // ---- visuals & skin perks ----
             boardSr = MakeSprite("Board", "board", new Vector2(0f, 0.02f), 10);
             MakeSprite("WheelR", "wheel", wheelRear.offset, 11);
             MakeSprite("WheelF", "wheel", wheelFront.offset, 11);
             string thrusterName = "thruster_" + Mathf.Clamp(save.GetLevel(UpgradeId.JetThruster), 0, 2);
             MakeSprite("Thruster", thrusterName, new Vector2(-1.18f, 0.3f), 9);
             skin = SkinDatabase.Get(save.selectedSkin);
-            var turtleGo = MakeSprite("TurtleSprite", "turtle", new Vector2(-0.02f, 0.72f), 12);
+            ApplySkinPerks(skin, true);
+
+            var turtleGo = MakeSprite("TurtleSprite", "turtle", new Vector2(-0.02f, 0.56f), 12);
             turtleGo.sprite = SpriteLibrary.GetTurtle(skin.id);
             turtleSr = turtleGo;
             turtleT = turtleGo.transform;
 
+            auraSr = MakeSprite("Aura", "shield_orb", new Vector2(-0.02f, 0.42f), 14);
+            auraSr.transform.localScale = new Vector3(2.2f, 2.2f, 1f);
+            auraSr.enabled = false;
+
             BuildParticles();
             lastAngle = rb.rotation;
+        }
+
+        void ApplySkinPerks(SkinDef s, bool initial)
+        {
+            if (s == null) return;
+            skinBurnMult = s.fuelBurnMult > 0f ? s.fuelBurnMult : 1f;
+            flipSpeedMult = s.flipSpeedMult > 0f ? s.flipSpeedMult : 1f;
+            stuntGainMult = s.stuntGainMult > 0f ? s.stuntGainMult : 1f;
+            if (initial && s.bonusFreeHits > 0) freeHits += s.bonusFreeHits;
         }
 
         CircleCollider2D AddWheel(Vector2 offset, PhysicsMaterial2D mat)
@@ -269,6 +297,7 @@ namespace TurtleBlaster
                 jumpCooldownTimer = cfg.jumpCooldown;
                 groundedTimer = 1f; grounded = false;         // leave the ground now (also ends coyote time)
                 wasGrounded = true;                           // run the take-off reset below
+                squashStretch = new Vector2(0.80f, 1.24f);    // stretch vertically on jump
                 dust.Emit(6);
                 AudioManager.Sfx("flip", 0.5f, 1.6f);
             }
@@ -321,7 +350,7 @@ namespace TurtleBlaster
             if (airWeight > 0.001f)
             {
                 // Rotation in the air is pure inertia (GDD 3.2) driven by the player's torque...
-                rb.AddTorque((sPitch * cfg.pitchTorque + sFlip * cfg.flipTorque) * airWeight);
+                rb.AddTorque((sPitch * cfg.pitchTorque + sFlip * cfg.flipTorque * flipSpeedMult) * airWeight);
 
                 // ...except for a weak "gyro" that levels the board when the player is NOT flipping and the
                 // board is not already spinning. A plain hop therefore lands level, while a real flip
@@ -359,7 +388,7 @@ namespace TurtleBlaster
             if (Thrusting)
             {
                 rb.AddForce((Forward * cfg.thrustAccel + Up * cfg.thrustLift) * (thrustMult * rb.mass));
-                fuel = Mathf.Max(0f, fuel - cfg.thrustFuelPerSecond * burnMult * dt);
+                fuel = Mathf.Max(0f, fuel - cfg.thrustFuelPerSecond * burnMult * skinBurnMult * dt);
             }
             var em = exhaust.emission; em.rateOverTime = Thrusting ? 70f : 0f;
 
@@ -370,6 +399,7 @@ namespace TurtleBlaster
             if (landingBoostTimer > 0f) landingBoostTimer -= dt;
             if (hitInvulnTimer > 0f) hitInvulnTimer -= dt;
             if (shieldTimer > 0f) shieldTimer -= dt;
+            if (magnetTimer > 0f) magnetTimer -= dt;
             float boostFade = Mathf.Clamp01(landingBoostTimer / 1.0f);   // holds for most of the duration, then eases out
             float target = cfg.cruiseSpeed * cruiseMult * (SuperBoost ? cfg.superBoostSpeedMult : 1f) * (1f + cfg.perfectSpeedBoost * boostFade);
             if (grounded)
@@ -406,6 +436,9 @@ namespace TurtleBlaster
             }
             else { var se = sparks.emission; se.rateOverTime = 0f; }
 
+            // --- close call / near-miss check on overhead / air hazards ---
+            CheckCloseCalls();
+
             // --- safety: fell far below the terrain ---
             if (GameManager.Instance != null && GameManager.Instance.World != null &&
                 rb.position.y < GameManager.Instance.World.HeightAt(rb.position.x) - 18f)
@@ -414,18 +447,62 @@ namespace TurtleBlaster
             }
         }
 
+        void CheckCloseCalls()
+        {
+            if (hitInvulnTimer > 0f || GameManager.Instance == null || GameManager.Instance.State != GameState.Playing) return;
+            var hits = Physics2D.OverlapCircleAll(rb.position + new Vector2(-0.3f, 0.7f), 2.1f);
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var c = hits[i];
+                if (c == null || !c.TryGetComponent<Hazard>(out var hz)) continue;
+                if (!hz.isAir || hz.closeCallCounted) continue;
+                float dx = rb.position.x - hz.transform.position.x;
+                // Trigger once the turtle safely clears the hazard's center horizontally while passing close by
+                if (dx > 0.25f && dx < 1.35f)
+                {
+                    hz.closeCallCounted = true;
+                    if (!SuperBoost)
+                    {
+                        Stunt01 = Mathf.Clamp01(Stunt01 + 0.16f * stuntGainMult);
+                        if (Stunt01 >= 1f) StartSuperBoost();
+                    }
+                    CloseCall?.Invoke(hz);
+                }
+            }
+        }
+
         void Update()
         {
+            UpdateGhosts(Time.deltaTime);
             if (!Alive) return;
             if (GameInput.JumpPressed) { jumpBuffer = cfg.jumpBufferTime; GameInput.TouchJump = false; GameInput.OverrideJump = false; }
 
-            // duck pose
+            // keep active turtle skin synced when changed in Skins/Shop menu
+            string currentSkinId = SaveData.Current.selectedSkin;
+            if (skin == null || skin.id != currentSkinId)
+            {
+                skin = SkinDatabase.Get(currentSkinId);
+                ApplySkinPerks(skin, false);
+                if (turtleSr != null) turtleSr.sprite = SpriteLibrary.GetTurtle(skin.id);
+            }
+
+            // duck pose + squash & stretch
+            squashStretch = Vector2.Lerp(squashStretch, Vector2.one, 1f - Mathf.Exp(-14f * Time.deltaTime));
             float targetY = IsDucking ? 0.6f : 1f;
-            var s = turtleT.localScale;
-            s.y = Mathf.MoveTowards(s.y, targetY, Time.deltaTime * 8f);
-            turtleT.localScale = s;
-            // legs sit on the deck top (y = 0.24); sprite centre is 0.5 units above its feet when standing
-            turtleT.localPosition = new Vector3(-0.02f, 0.24f + 0.5f * s.y, 0f);
+            duckScaleY = Mathf.MoveTowards(duckScaleY, targetY, Time.deltaTime * 8f);
+            float sx = squashStretch.x * (IsDucking ? 1.12f : 1f);
+            float sy = duckScaleY * squashStretch.y;
+            turtleT.localScale = new Vector3(sx, sy, 1f);
+            // legs sit on the deck top (y = 0.18); sprite centre is 0.38 units above its feet when standing
+            turtleT.localPosition = new Vector3(-0.02f, 0.18f + 0.38f * sy, 0f);
+
+            // ghost trail afterimages during SuperBoost or Perfect Landing speed boost
+            ghostTimer -= Time.deltaTime;
+            if ((SuperBoost || landingBoostTimer > 0.15f) && ghostTimer <= 0f)
+            {
+                ghostTimer = 0.045f;
+                SpawnGhost();
+            }
 
             // super boost flicker / hit flash
             if (hitFlash > 0f) hitFlash -= Time.deltaTime;
@@ -437,7 +514,70 @@ namespace TurtleBlaster
             turtleSr.color = c;
             boardSr.color = c;
 
+            // visual aura for shield / safety shell / magnet
+            if (auraSr != null)
+            {
+                bool showAura = shieldTimer > 0f || freeHits > 0 || magnetTimer > 0f;
+                auraSr.enabled = showAura;
+                if (showAura)
+                {
+                    float pulse = 2.15f + Mathf.Sin(Time.time * 6f) * 0.12f;
+                    auraSr.transform.localScale = new Vector3(pulse, pulse, 1f);
+                    Color ac = magnetTimer > 0f && freeHits == 0 && shieldTimer <= 0f
+                        ? new Color(1f, 0.45f, 0.75f, 0.42f)
+                        : new Color(0.35f, 0.9f, 1f, shieldTimer > 0f ? 0.65f : 0.38f);
+                    auraSr.color = ac;
+                }
+            }
+
             AudioManager.Thrust(Thrusting);
+        }
+
+        void SpawnGhost()
+        {
+            if (turtleSr == null) return;
+            var go = new GameObject("TurtleGhost");
+            go.transform.SetPositionAndRotation(turtleT.position, turtleT.rotation);
+            go.transform.localScale = turtleT.lossyScale;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = turtleSr.sprite;
+            sr.sortingOrder = 7;
+            Color gc = SuperBoost
+                ? Color.HSVToRGB(Mathf.Repeat(Time.time * 2.5f, 1f), 0.7f, 1f)
+                : new Color(0.4f, 0.9f, 1f, 1f);
+            gc.a = 0.48f;
+            sr.color = gc;
+            ghosts.Add((sr, 0f));
+        }
+
+        void UpdateGhosts(float dt)
+        {
+            const float life = 0.22f;
+            for (int i = ghosts.Count - 1; i >= 0; i--)
+            {
+                var (sr, age) = ghosts[i];
+                if (sr == null) { ghosts.RemoveAt(i); continue; }
+                age += dt;
+                if (age >= life)
+                {
+                    Destroy(sr.gameObject);
+                    ghosts.RemoveAt(i);
+                }
+                else
+                {
+                    var c = sr.color;
+                    c.a = 0.48f * (1f - age / life);
+                    sr.color = c;
+                    ghosts[i] = (sr, age);
+                }
+            }
+        }
+
+        void ClearGhosts()
+        {
+            for (int i = 0; i < ghosts.Count; i++)
+                if (ghosts[i].sr != null) Destroy(ghosts[i].sr.gameObject);
+            ghosts.Clear();
         }
 
         void ApplyDuck(bool duck)
@@ -545,6 +685,8 @@ namespace TurtleBlaster
                 return;
             }
 
+            squashStretch = grade == LandingGrade.Rough ? new Vector2(1.32f, 0.68f) : new Vector2(1.22f, 0.78f);
+
             // bank flips (no accident = they count)
             int flips = Mathf.FloorToInt(Mathf.Abs(rotAccum) / cfg.flipThreshold);
             if (flips > 0)
@@ -552,7 +694,7 @@ namespace TurtleBlaster
                 FlipsCommitted?.Invoke(flips);
                 if (!SuperBoost)
                 {
-                    Stunt01 = Mathf.Clamp01(Stunt01 + flips * cfg.stuntPerFlip);
+                    Stunt01 = Mathf.Clamp01(Stunt01 + flips * cfg.stuntPerFlip * stuntGainMult);
                     if (Stunt01 >= 1f) StartSuperBoost();
                 }
             }
@@ -641,6 +783,21 @@ namespace TurtleBlaster
             shieldTimer = Mathf.Max(shieldTimer, seconds);
         }
 
+        public void GrantMagnet(float seconds)
+        {
+            magnetTimer = Mathf.Max(magnetTimer, seconds);
+        }
+
+        public void RefillFuel(float fraction)
+        {
+            fuel = Mathf.Min(fuelCapacity, fuel + fuelCapacity * Mathf.Clamp01(fraction));
+        }
+
+        public void AddFreeHit(int count = 1)
+        {
+            freeHits = Mathf.Min(5, freeHits + count);
+        }
+
         public void SetFuel01(float f) => fuel = Mathf.Clamp01(f) * fuelCapacity;
 
         public void Crash(string cause)
@@ -653,6 +810,7 @@ namespace TurtleBlaster
             var em = exhaust.emission; em.rateOverTime = 0f;
             var bt = boostTrail.emission; bt.rateOverTime = 0f;
             var se = sparks.emission; se.rateOverTime = 0f;
+            if (auraSr != null) auraSr.enabled = false;
             if (SuperBoost) { SuperBoost = false; SuperBoostChanged?.Invoke(false); }
 
             // Turtle gets flung off the board and tumbles as a ragdoll (GDD 3.3 / 6)
@@ -682,8 +840,11 @@ namespace TurtleBlaster
             Crashed?.Invoke(cause);
         }
 
+        void OnDestroy() => ClearGhosts();
+
         public void Dispose()
         {
+            ClearGhosts();
             if (ragdoll != null) Destroy(ragdoll);
             Destroy(gameObject);
         }

@@ -66,7 +66,8 @@ namespace TurtleBlaster
             float speed = 0f;
             var rb = target.GetComponent<Rigidbody2D>();
             if (rb != null) speed = rb.linearVelocity.magnitude;
-            float targetSize = baseSize + Mathf.Clamp((speed - 9f) * 0.14f, 0f, maxExtraSize);
+            bool super = GameManager.Instance != null && GameManager.Instance.Player != null && GameManager.Instance.Player.SuperBoost;
+            float targetSize = baseSize + Mathf.Clamp((speed - 9f) * 0.14f, 0f, maxExtraSize) + (super ? 0.55f : 0f);
             size = Mathf.SmoothDamp(size, targetSize, ref velSize, 0.7f, Mathf.Infinity, Time.unscaledDeltaTime);
             cam.orthographicSize = size;
 
@@ -79,6 +80,10 @@ namespace TurtleBlaster
             {
                 offset = new Vector3(Random.Range(-1f, 1f), Random.Range(-1f, 1f), 0f) * shake;
                 shake = Mathf.MoveTowards(shake, 0f, Time.unscaledDeltaTime * 2.5f);
+            }
+            if (super)
+            {
+                offset += new Vector3(Mathf.Sin(Time.time * 48f), Mathf.Cos(Time.time * 54f), 0f) * 0.045f;
             }
             transform.position = pos + offset;
         }

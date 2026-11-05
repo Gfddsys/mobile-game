@@ -100,22 +100,24 @@ namespace TurtleBlaster
                 UIFactory.Place((RectTransform)card.transform, new Vector2(0.5f, 0.5f), pos[i], new Vector2(400, 360));
 
                 var preview = UIFactory.Image(card.transform, "Preview", SpriteLibrary.GetTurtle(skin.id), Color.white);
-                UIFactory.Place((RectTransform)preview.transform, new Vector2(0.5f, 1), new Vector2(0, -20), new Vector2(182, 140), new Vector2(0.5f, 1));
+                UIFactory.Place((RectTransform)preview.transform, new Vector2(0.5f, 1), new Vector2(0, -14), new Vector2(166, 128), new Vector2(0.5f, 1));
 
-                var name = UIFactory.Label(card.transform, (i + 1) + ". " + skin.name, 36, Color.white);
-                UIFactory.Place((RectTransform)name.transform, new Vector2(0.5f, 0), new Vector2(0, 150), new Vector2(380, 44));
-                var price = UIFactory.Label(card.transform, "", 30, UIFactory.Accent);
-                UIFactory.Place((RectTransform)price.transform, new Vector2(0.5f, 0), new Vector2(0, 110), new Vector2(380, 40));
+                var name = UIFactory.Label(card.transform, skin.name, 34, Color.white);
+                UIFactory.Place((RectTransform)name.transform, new Vector2(0.5f, 0), new Vector2(0, 168), new Vector2(380, 40));
+
+                var perk = UIFactory.Label(card.transform, skin.perkDesc ?? "", 24, new Color(0.55f, 0.95f, 0.7f));
+                UIFactory.Place((RectTransform)perk.transform, new Vector2(0.5f, 0), new Vector2(0, 134), new Vector2(380, 32));
+
+                var price = UIFactory.Label(card.transform, "", 28, UIFactory.Accent);
+                UIFactory.Place((RectTransform)price.transform, new Vector2(0.5f, 0), new Vector2(0, 100), new Vector2(380, 36));
 
                 int index = i;
-                var btn = UIFactory.MakeButton(card.transform, "BUY", UIFactory.Blue, () => SkinAction(index), new Vector2(340, 84), 34);
-                UIFactory.Place((RectTransform)btn.transform, new Vector2(0.5f, 0), new Vector2(0, 24), new Vector2(340, 84));
+                var btn = UIFactory.MakeButton(card.transform, "BUY", UIFactory.Blue, () => SkinAction(index), new Vector2(340, 76), 32);
+                UIFactory.Place((RectTransform)btn.transform, new Vector2(0.5f, 0), new Vector2(0, 20), new Vector2(340, 76));
 
                 skinCards.Add(new SkinCard { skin = skin, preview = preview, price = price, button = btn });
             }
 
-            var hint = UIFactory.Label(skinsScreen, "Keyboard:  1-7 = Buy / Equip    Esc = Back", 30, new Color(0.8f, 0.85f, 1f), TextAnchor.UpperLeft);
-            UIFactory.Place((RectTransform)hint.transform, new Vector2(0, 1), new Vector2(54, -140), new Vector2(1200, 40));
             BackButton(skinsScreen);
         }
 
@@ -209,7 +211,7 @@ namespace TurtleBlaster
                 var icon = UIFactory.Image(card.transform, "Icon", p.kind == ProductKind.Skin ? SpriteLibrary.GetTurtle(p.skinId) : SpriteLibrary.Get("coin"), Color.white);
                 UIFactory.Place((RectTransform)icon.transform, new Vector2(0.5f, 1), new Vector2(0, -30), p.kind == ProductKind.Skin ? new Vector2(208, 160) : new Vector2(150, 150), new Vector2(0.5f, 1));
 
-                var title = UIFactory.Label(card.transform, (i + 1) + ". " + p.title, 36, Color.white);
+                var title = UIFactory.Label(card.transform, p.title, 36, Color.white);
                 UIFactory.Place((RectTransform)title.transform, new Vector2(0.5f, 0), new Vector2(0, 190), new Vector2(380, 44));
                 var what = UIFactory.Label(card.transform, p.kind == ProductKind.Coins ? "+" + p.coins.ToString("N0") + " coins" : "Exclusive animated skin", 32, UIFactory.Accent);
                 UIFactory.Place((RectTransform)what.transform, new Vector2(0.5f, 0), new Vector2(0, 140), new Vector2(380, 40));
@@ -226,8 +228,6 @@ namespace TurtleBlaster
             var restore = UIFactory.MakeButton(shopScreen, "RESTORE PURCHASES", UIFactory.Panel, RestorePurchases, new Vector2(420, 70), 28);
             UIFactory.Place((RectTransform)restore.transform, new Vector2(1, 0), new Vector2(-50, 55), new Vector2(420, 70));
 
-            var hint = UIFactory.Label(shopScreen, "Keyboard:  1-4 = Buy    Esc = Back", 28, new Color(0.8f, 0.85f, 1f));
-            UIFactory.Place((RectTransform)hint.transform, new Vector2(0.5f, 0), new Vector2(0, 160), new Vector2(1200, 40));
             BackButton(shopScreen);
         }
 
@@ -296,7 +296,7 @@ namespace TurtleBlaster
         {
             ranksScreen = FullScreen(parent, "Leaderboard", new Color(0.08f, 0.09f, 0.16f, 0.95f));
             Title(ranksScreen, "LEADERBOARD");
-            var sub = UIFactory.Label(ranksScreen, "Best distance - on this device", 34, new Color(0.8f, 0.85f, 1f), TextAnchor.UpperLeft);
+            var sub = UIFactory.Label(ranksScreen, "Best distance - Global Leaderboard", 34, new Color(0.8f, 0.85f, 1f), TextAnchor.UpperLeft);
             UIFactory.Place((RectTransform)sub.transform, new Vector2(0, 1), new Vector2(54, -140), new Vector2(1200, 44));
 
             var panel = UIFactory.PanelBox(ranksScreen, "Table", new Color(0.17f, 0.18f, 0.3f));
@@ -479,34 +479,24 @@ namespace TurtleBlaster
         }
 
         // =====================================================================
-        // Per-frame: timers, keyboard for dialogs, animated previews
+        // Per-frame: timers, animated previews
         // =====================================================================
         void UpdateExtras()
         {
             float dt = Time.unscaledDeltaTime;
-            bool confirm = Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
-            bool esc = Input.GetKeyDown(KeyCode.Escape);
 
             if (adOverlay.gameObject.activeSelf)
             {
                 adLeft -= dt;
                 adClaimBtn.interactable = adLeft <= 0f;
                 adCountdown.text = adLeft > 0f ? "Reward in " + Mathf.CeilToInt(adLeft) + "..." : "Reward ready!";
-                if (esc) CloseAd(false);
-                else if (confirm && adLeft <= 0f) CloseAd(true);
-            }
-            else if (purchaseOverlay.gameObject.activeSelf)
-            {
-                if (esc) ClosePurchase(false);
-                else if (confirm) ClosePurchase(true);
             }
             else if (reviveOverlay.gameObject.activeSelf)
             {
                 reviveLeft -= dt;
                 reviveBar.fillAmount = Mathf.Clamp01(reviveLeft / reviveDuration);
-                reviveTimerText.text = "Offer ends in " + Mathf.CeilToInt(Mathf.Max(0f, reviveLeft)) + "s   (SPACE = watch, Esc = no thanks)";
-                if (esc || reviveLeft <= 0f) ReviveChoose(false);
-                else if (confirm) ReviveChoose(true);
+                reviveTimerText.text = "Offer ends in " + Mathf.CeilToInt(Mathf.Max(0f, reviveLeft)) + "s";
+                if (reviveLeft <= 0f) ReviveChoose(false);
             }
 
             if (skinsScreen.gameObject.activeSelf)

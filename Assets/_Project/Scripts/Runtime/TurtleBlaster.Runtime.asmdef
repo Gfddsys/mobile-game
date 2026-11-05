@@ -3,7 +3,10 @@
   "rootNamespace": "TurtleBlaster",
   "references": [
     "UnityEngine.UI",
-    "Unity.LevelPlay"
+    "Unity.LevelPlay",
+    "Unity.Services.Core",
+    "Unity.Services.Authentication",
+    "Unity.Services.Leaderboards"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],

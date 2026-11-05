@@ -93,6 +93,7 @@ namespace TurtleBlaster
         void Start()
         {
             ShowMenu();
+            (Services.Leaderboard as UgsLeaderboardService)?.EnsureSignedInAsync();
         }
 
         void OnDestroy()
@@ -117,8 +118,6 @@ namespace TurtleBlaster
 
         void Update()
         {
-            HandleKeyboardShortcuts();
-
             if (Player != null && World != null)
             {
                 World.UpdateAround(Cam.transform.position.x);
@@ -130,6 +129,19 @@ namespace TurtleBlaster
                     dist = Stats.distance;
                     Stats.topSpeed = Mathf.Max(Stats.topSpeed, Player.Speed);
                     Stats.score = Mathf.FloorToInt(dist * cfg.pointsPerMeter) + bonusScore + Mathf.FloorToInt(grindScore);
+
+                    if (dist > 5f)
+                    {
+                        var m = SaveData.Current.GetCurrentMission();
+                        if (m.IsComplete(Stats))
+                        {
+                            SaveData.Current.CompleteCurrentMission();
+                            Stats.missionsCompleted++;
+                            bonusScore += 150;
+                            UI.Popup("MISSION COMPLETE! +" + m.rewardCoins + "c", UIFactory.Good, 68);
+                            AudioManager.Sfx("buy");
+                        }
+                    }
                 }
                 else if (State == GameState.Menu)
                 {
@@ -138,62 +150,6 @@ namespace TurtleBlaster
                     if (!Player.Alive && menuResetTimer > 1.5f || Player.transform.position.x > 700f) StartAttractMode();
                     if (Player.Alive) menuResetTimer = 0f;
                 }
-            }
-        }
-
-        // =====================================================================
-        // Keyboard shortcuts (PC testing) - gameplay keys live in GameInput
-        // =====================================================================
-        void HandleKeyboardShortcuts()
-        {
-            if (UI.OverlayOpen) return;   // ad / purchase / revive dialogs handle their own keys
-            bool esc = Input.GetKeyDown(KeyCode.Escape);
-            bool confirm = Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
-            switch (State)
-            {
-                case GameState.Menu:
-                    if (confirm) StartRun();
-                    else if (Input.GetKeyDown(KeyCode.G)) OpenGarage();
-                    else if (Input.GetKeyDown(KeyCode.K)) OpenSkins();
-                    else if (Input.GetKeyDown(KeyCode.B)) OpenShop();
-                    else if (Input.GetKeyDown(KeyCode.L)) OpenLeaderboard();
-                    break;
-                case GameState.Skins:
-                    if (esc || Input.GetKeyDown(KeyCode.M)) ShowMenu();
-                    else
-                        for (int i = 0; i < 7; i++)
-                            if (Input.GetKeyDown(KeyCode.Alpha1 + i) || Input.GetKeyDown(KeyCode.Keypad1 + i)) UI.SkinAction(i);
-                    break;
-                case GameState.Shop:
-                    if (esc || Input.GetKeyDown(KeyCode.M)) ShowMenu();
-                    else
-                        for (int i = 0; i < 4; i++)
-                            if (Input.GetKeyDown(KeyCode.Alpha1 + i) || Input.GetKeyDown(KeyCode.Keypad1 + i)) UI.ShopAction(i);
-                    break;
-                case GameState.Leaderboard:
-                    if (esc || confirm || Input.GetKeyDown(KeyCode.M)) ShowMenu();
-                    break;
-                case GameState.Playing:
-                    if (esc || Input.GetKeyDown(KeyCode.P)) Pause();
-                    else if (Input.GetKeyDown(KeyCode.R)) StartRun();   // quick restart
-                    break;
-                case GameState.Paused:
-                    if (esc || Input.GetKeyDown(KeyCode.P) || confirm) Resume();
-                    else if (Input.GetKeyDown(KeyCode.Q)) QuitRun();
-                    break;
-                case GameState.Summary:
-                    if (confirm || Input.GetKeyDown(KeyCode.R)) StartRun();
-                    else if (Input.GetKeyDown(KeyCode.G)) OpenGarage();
-                    else if (Input.GetKeyDown(KeyCode.A)) WatchAdForDoubleCoins();
-                    else if (esc || Input.GetKeyDown(KeyCode.M)) ShowMenu();
-                    break;
-                case GameState.Garage:
-                    if (esc || Input.GetKeyDown(KeyCode.M)) ShowMenu();
-                    else if (confirm) StartRun();
-                    else
-                        for (int i = 0; i < 4; i++)
-                            if (Input.GetKeyDown(KeyCode.Alpha1 + i) || Input.GetKeyDown(KeyCode.Keypad1 + i)) UI.BuyUpgrade((UpgradeId)i);
-                    break;
             }
         }
 
@@ -292,6 +248,7 @@ namespace TurtleBlaster
             p.FlipsCommitted += OnFlipsCommitted;
             p.PickedUp += OnPickedUp;
             p.HazardHandled += OnHazardHandled;
+            p.CloseCall += OnCloseCall;
             p.SuperBoostChanged += OnSuperBoost;
             p.Grinding += OnGrinding;
             p.Crashed += OnCrashed;
@@ -302,7 +259,7 @@ namespace TurtleBlaster
         void OnLanded(LandingGrade grade, float angle)
         {
             if (!Active) return;
-                        switch (grade)
+            switch (grade)
             {
                 case LandingGrade.Perfect:
                     Combo++;
@@ -343,19 +300,53 @@ namespace TurtleBlaster
         void OnPickedUp(PickupType type)
         {
             if (!Active) return;
-            if (type == PickupType.Coin)
+            switch (type)
             {
-                Stats.coins += cfg.coinsPerCoinPickup;
-                bonusScore += cfg.pointsPerCoin;
-                AudioManager.Sfx("coin", 0.6f, 1f + Mathf.Min(Stats.coins % 8, 7) * 0.04f);
+                case PickupType.Coin:
+                {
+                    int gain = cfg.coinsPerCoinPickup;
+                    var sk = Player != null ? Player.Skin : null;
+                    if (sk != null && sk.doubleCoinChance > 0f && Random.value < sk.doubleCoinChance) gain *= 2;
+                    Stats.coins += gain;
+                    bonusScore += cfg.pointsPerCoin * gain;
+                    AudioManager.Sfx("coin", 0.6f, 1f + Mathf.Min(Stats.coins % 8, 7) * 0.04f);
+                    break;
+                }
+                case PickupType.Part:
+                    Stats.parts++;
+                    bonusScore += cfg.pointsPerPart;
+                    UI.Popup("SPARE PART!", new Color(0.6f, 0.85f, 1f), 52);
+                    AudioManager.Sfx("part");
+                    break;
+                case PickupType.Magnet:
+                    Player.GrantMagnet(8f);
+                    bonusScore += 30;
+                    UI.Popup("COIN MAGNET!", new Color(1f, 0.45f, 0.75f), 58);
+                    AudioManager.Sfx("boost", 0.75f, 1.2f);
+                    break;
+                case PickupType.Fuel:
+                    Player.RefillFuel(0.5f);
+                    bonusScore += 30;
+                    UI.Popup("FUEL +50%!", UIFactory.Good, 58);
+                    AudioManager.Sfx("perfect", 0.8f, 1.1f);
+                    break;
+                case PickupType.Shield:
+                    Player.AddFreeHit(1);
+                    bonusScore += 30;
+                    UI.Popup("+1 SHELL SHIELD!", new Color(0.4f, 0.9f, 1f), 58);
+                    AudioManager.Sfx("part", 0.85f, 1.15f);
+                    break;
             }
-            else
-            {
-                Stats.parts++;
-                bonusScore += cfg.pointsPerPart;
-                UI.Popup("SPARE PART!", new Color(0.6f, 0.85f, 1f), 52);
-                AudioManager.Sfx("part");
-            }
+        }
+
+        void OnCloseCall(Hazard hz)
+        {
+            if (!Active) return;
+            Stats.closeCalls++;
+            int pts = Mathf.RoundToInt(50 * ComboMultiplier);
+            bonusScore += pts;
+            UI.Popup("CLOSE CALL! +" + pts, new Color(1f, 0.6f, 0.2f), 54);
+            AudioManager.Sfx("flip", 0.7f, 1.35f);
         }
 
         void OnHazardHandled(Hazard hz, bool smashed)
@@ -540,6 +531,10 @@ namespace TurtleBlaster
         void FinishRun()
         {
             var save = SaveData.Current;
+            var sk = SkinDatabase.Get(save.selectedSkin);
+            if (sk != null && sk.coinBonusMult > 1.01f)
+                Stats.coins = Mathf.RoundToInt(Stats.coins * sk.coinBonusMult);
+
             Stats.newBestDistance = Mathf.FloorToInt(Stats.distance) > save.bestDistance;
             Stats.newBestScore = Stats.score > save.bestScore;
             save.bestDistance = Mathf.Max(save.bestDistance, Mathf.FloorToInt(Stats.distance));

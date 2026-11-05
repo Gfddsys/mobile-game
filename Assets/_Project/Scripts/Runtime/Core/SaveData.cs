@@ -4,6 +4,33 @@ using UnityEngine;
 
 namespace TurtleBlaster
 {
+    public enum MissionKind { Distance, Flips, PerfectLandings, CoinsInRun, GrindSeconds, CloseCalls }
+
+    public struct MissionDef
+    {
+        public MissionKind kind;
+        public int target;
+        public int rewardCoins;
+        public string title;
+
+        public int GetProgress(RunStats s)
+        {
+            if (s == null) return 0;
+            switch (kind)
+            {
+                case MissionKind.Distance: return Mathf.FloorToInt(s.distance);
+                case MissionKind.Flips: return s.flips;
+                case MissionKind.PerfectLandings: return s.perfectLandings;
+                case MissionKind.CoinsInRun: return s.coins;
+                case MissionKind.GrindSeconds: return Mathf.FloorToInt(s.grindTime);
+                case MissionKind.CloseCalls: return s.closeCalls;
+                default: return 0;
+            }
+        }
+
+        public bool IsComplete(RunStats s) => GetProgress(s) >= target;
+    }
+
     /// <summary>Persistent player profile. Stored as JSON in PlayerPrefs.</summary>
     [Serializable]
     public class SaveData
@@ -16,6 +43,7 @@ namespace TurtleBlaster
         public int bestDistance;
         public int bestScore;
         public int totalRuns;
+        public int missionIndex;
         public bool sfxOn = true;
         public bool musicOn = true;
 
@@ -38,6 +66,53 @@ namespace TurtleBlaster
                 if (_current == null) _current = Load();
                 return _current;
             }
+        }
+
+        public MissionDef GetCurrentMission()
+        {
+            int idx = Mathf.Max(0, missionIndex);
+            int tier = idx / 6;
+            switch (idx % 6)
+            {
+                case 0:
+                {
+                    int t = 150 + tier * 50;
+                    return new MissionDef { kind = MissionKind.Distance, target = t, rewardCoins = 60 + tier * 15, title = "Reach " + t + "m in one run" };
+                }
+                case 1:
+                {
+                    int t = 3 + tier;
+                    return new MissionDef { kind = MissionKind.Flips, target = t, rewardCoins = 75 + tier * 15, title = "Land " + t + " flips in one run" };
+                }
+                case 2:
+                {
+                    int t = 2 + tier;
+                    return new MissionDef { kind = MissionKind.PerfectLandings, target = t, rewardCoins = 80 + tier * 15, title = "Hit " + t + " Perfect Landings" };
+                }
+                case 3:
+                {
+                    int t = 15 + tier * 5;
+                    return new MissionDef { kind = MissionKind.CoinsInRun, target = t, rewardCoins = 70 + tier * 15, title = "Collect " + t + " coins in one run" };
+                }
+                case 4:
+                {
+                    int t = 2 + tier;
+                    return new MissionDef { kind = MissionKind.GrindSeconds, target = t, rewardCoins = 90 + tier * 15, title = "Grind on rails for " + t + "s" };
+                }
+                default:
+                {
+                    int t = 2 + tier;
+                    return new MissionDef { kind = MissionKind.CloseCalls, target = t, rewardCoins = 100 + tier * 20, title = "Get " + t + " Close Call dodges" };
+                }
+            }
+        }
+
+        public void CompleteCurrentMission()
+        {
+            var m = GetCurrentMission();
+            coins += m.rewardCoins;
+            missionIndex++;
+            Save();
         }
 
         public int GetLevel(UpgradeId id) => upgradeLevels[(int)id];
@@ -156,6 +231,8 @@ namespace TurtleBlaster
         public int parts;
         public int flips;
         public int perfectLandings;
+        public int closeCalls;
+        public int missionsCompleted;
         public int maxCombo;
         public float topSpeed;
         public float grindTime;

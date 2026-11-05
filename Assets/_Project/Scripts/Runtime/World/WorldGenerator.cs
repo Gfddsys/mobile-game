@@ -152,12 +152,13 @@ namespace TurtleBlaster
             float bottom = minY - 8f;
 
             // ---- mesh: grass strip (vertices 0..3n) + dirt block (second vertex set) ----
+            Color biomeTint = Color.Lerp(Color.white, ParallaxBackground.EvaluateBiomeTint(x0, out _), 0.38f);
             var verts = new Vector3[n * 3];
             var cols = new Color32[n * 3];
-            var grassA = PixelCanvas.C("#52c84a");
-            var grassB = PixelCanvas.C("#43b03d");
-            var dirtTop = PixelCanvas.C("#8d5a2b");
-            var dirtBot = PixelCanvas.C("#4a2f17");
+            Color32 grassA = (Color)PixelCanvas.C("#52c84a") * biomeTint;
+            Color32 grassB = (Color)PixelCanvas.C("#43b03d") * biomeTint;
+            Color32 dirtTop = (Color)PixelCanvas.C("#8d5a2b") * biomeTint;
+            Color32 dirtBot = (Color)PixelCanvas.C("#4a2f17") * biomeTint;
             for (int i = 0; i < n; i++)
             {
                 float lx = i * cfg.sampleSpacing;
@@ -418,7 +419,26 @@ namespace TurtleBlaster
                 var go = MakeSprite("Coin", "coin", new Vector2(cx, HeightAt(cx) + 1.1f + Mathf.Sin(t * Mathf.PI) * arcHeight), 0f, OrderPickups);
                 AddPickup(go, PickupType.Coin, 0.32f);
             }
+
+            // Deterministically place an in-run power-up above the peak of some coin arcs (without extra RNG calls)
+            int hash = Mathf.Abs(Mathf.RoundToInt(x * 13f));
+            if (x > 55f && hash % 3 == 0)
+            {
+                float midX = x + (count - 1) * 0.5f * spacing;
+                float py = HeightAt(midX) + 1.1f + arcHeight + 0.95f;
+                int kind = (hash / 3) % 3;
+                if (kind == 0) SpawnPowerup("Magnet", "magnet", midX, py, PickupType.Magnet);
+                else if (kind == 1) SpawnPowerup("FuelCan", "fuel", midX, py, PickupType.Fuel);
+                else SpawnPowerup("ShieldOrb", "shield_orb", midX, py, PickupType.Shield);
+            }
+
             return count * spacing;
+        }
+
+        void SpawnPowerup(string name, string sprite, float x, float y, PickupType type)
+        {
+            var go = MakeSprite(name, sprite, new Vector2(x, y), 0f, OrderPickups + 1);
+            AddPickup(go, type, 0.48f);
         }
 
         float SpawnPart(float x)

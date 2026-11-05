@@ -17,7 +17,7 @@ namespace TurtleBlaster
     {
         public static IAdService Ads = new MockAdService();
         public static IPurchaseService Purchases = new MockPurchaseService();
-        public static ILeaderboardService Leaderboard = new LocalLeaderboard();
+        public static ILeaderboardService Leaderboard = new UgsLeaderboardService("High_Scores");
 
         /// <summary>True where test/mock behaviour is allowed (Editor or Development Build).</summary>
         public static bool MockAllowed => Application.isEditor || Debug.isDebugBuild;

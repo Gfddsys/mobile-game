@@ -70,10 +70,42 @@ namespace TurtleBlaster
         {
             if (cache.TryGetValue(name, out var s) && s != null) return s;
 
-            s = Resources.Load<Sprite>("Sprites/" + name);
+            s = LoadOverrideSprite(name);
             if (s == null && generators.TryGetValue(name, out var gen)) s = gen();
             if (s == null) { Debug.LogWarning("Missing sprite: " + name); s = Get("square"); }
             cache[name] = s;
+            return s;
+        }
+
+        static Sprite LoadOverrideSprite(string name)
+        {
+            var s = Resources.Load<Sprite>("Sprites/" + name);
+            if (s != null && s.texture != null &&
+                Mathf.Approximately(s.rect.width, s.texture.width) &&
+                Mathf.Approximately(s.rect.height, s.texture.height))
+            {
+                return s;
+            }
+            var tex = s != null ? s.texture : Resources.Load<Texture2D>("Sprites/" + name);
+            if (tex != null)
+            {
+                var refSprite = CreatePlaceholder(name);
+                Vector2 pivot = new Vector2(0.5f, 0.5f);
+                float ppu = 16f;
+                Vector4 border = Vector4.zero;
+                if (refSprite != null)
+                {
+                    float scale = tex.width / refSprite.rect.width;
+                    pivot = refSprite.pivot / refSprite.rect.size;
+                    ppu = refSprite.pixelsPerUnit * scale;
+                    border = refSprite.border * scale;
+                    if (Application.isPlaying) UnityEngine.Object.Destroy(refSprite.texture);
+                    else UnityEngine.Object.DestroyImmediate(refSprite.texture);
+                    if (Application.isPlaying) UnityEngine.Object.Destroy(refSprite);
+                    else UnityEngine.Object.DestroyImmediate(refSprite);
+                }
+                return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), pivot, ppu, 0, SpriteMeshType.FullRect, border);
+            }
             return s;
         }
 
@@ -265,6 +297,50 @@ namespace TurtleBlaster
                 return c.ToSprite(16f);
             };
 
+            g["magnet"] = () =>
+            {
+                var c = new PixelCanvas(12, 12);
+                c.Rect(2, 2, 8, 3, Red);
+                c.Rect(2, 4, 3, 5, Red);
+                c.Rect(7, 4, 3, 5, Blue);
+                c.Rect(2, 9, 3, 2, White);
+                c.Rect(7, 9, 3, 2, White);
+                c.Outline(K);
+                return c.ToSprite(16f);
+            };
+
+            g["fuel"] = () =>
+            {
+                var c = new PixelCanvas(12, 14);
+                c.Rect(2, 1, 8, 9, Red);
+                c.Rect(3, 10, 5, 2, Red);
+                c.Rect(8, 10, 2, 3, Yellow); // spout
+                c.Rect(4, 4, 4, 4, Yellow);
+                c.Outline(K);
+                return c.ToSprite(16f);
+            };
+
+            g["shield_orb"] = () =>
+            {
+                var c = new PixelCanvas(12, 12);
+                c.Ellipse(6, 6, 5f, 5f, PixelCanvas.C("#4dd2ff"));
+                c.Ellipse(6, 6, 3.2f, 3.2f, PixelCanvas.C("#a8ecff"));
+                c.Set(4, 8, White);
+                c.Set(5, 8, White);
+                c.Outline(K);
+                return c.ToSprite(16f);
+            };
+
+            g["star"] = () =>
+            {
+                var c = new PixelCanvas(7, 7);
+                c.Rect(3, 0, 1, 7, White);
+                c.Rect(0, 3, 7, 1, White);
+                c.Rect(2, 2, 3, 3, Yellow);
+                c.Set(3, 3, White);
+                return c.ToSprite(16f);
+            };
+
             g["cloud"] = () =>
             {
                 var c = new PixelCanvas(40, 14);
@@ -342,6 +418,18 @@ namespace TurtleBlaster
             return g;
         }
 
+        // Custom pixel-art sprites for all turtle skins (turtle.png & turtle_{id}.png)
+        static readonly Dictionary<string, string> TurtlePngBase64 = new Dictionary<string, string>
+        {
+            [SkinDatabase.DefaultId] = "iVBORw0KGgoAAAANSUhEUgAAABoAAAAUCAYAAACTQC2+AAAAAXNSR0IArs4c6QAAAT5JREFUSIntkjFKA0EUhr+BrBCF3cVEYpCEEEHSaGOKdF5AIQcI2NiJiHewT2W3jZ29OUYOkCrIguyCJDADWQuLZxEybHQ3BiuRfNXMvJn/mzcMbNjwb2g22nIS3Eqz0RYAtc6h+s2FzAqSWZv0B98yDu97dvPOfgmAwk8CAKfiUXeK2ZvuziVLKMEIddViFk/m41USp+LhOkV0GKOqHgCuU8R8vCORRlXndYAwjpj0ByrdjQQjAMYvQ5UpKvXOxG/VliSLwLR0IVtcIIwj/JJva+OHZ5uf+3SrJBJpgCWJDmPYykvLEJW7HakdHy1JdBjb4DyJ1ga/VbPdfEWlBQDuwV7+tVagtcHzXDtPP5vtqNztSFpgXt8YXl8CsO3u2vXETO1aYqa2lpgpp49PuZJMyt2OpH/OOvzmzIa/xyfYkIZ41W801gAAAABJRU5ErkJggg==",
+            ["blue"] = "iVBORw0KGgoAAAANSUhEUgAAABoAAAAUCAYAAACTQC2+AAAAAXNSR0IArs4c6QAAAURJREFUSIntkj1LA0EQhp8L5i4e5BuMwSKVEAJ26eRa6yu0s7W00MrC0kIQjI2d/yAI+RPprP0BAckRMJoElnwUa3HeZmP2QrASyVvt7sy8z8ywsNFG/0a5Wl2Wrp5krlaXANY6Rdnjczmztowx0WwseeTPbmR0tou7AJirNQBAIl8iYyfNSScX0gSU7RbWoc/0PQjPqyCJfAnHTjIJOlAoA4T36Qz6XSiUcb4bGPYCRLNh6dPIdguAz9cXywjaPjqVqUp1ARIZ6tAIFjUw7AU4uaKKfTw/Kv/Y1a2E9Lthkj5l0IGEHWe3DHI9X2b2DxYgk6AzN46BjEcDUpXqfNIfsnQAgLOzF9vVKo1HA1LprLrra1MTuZ4vdcCk98bd5UPYgOuqdyGEehNCqJgQgvvba/ppM8Qo1/Ol/nPW0W9qNvp7+gLwmIAkOJOgFgAAAABJRU5ErkJggg==",
+            ["sunset"] = "iVBORw0KGgoAAAANSUhEUgAAABoAAAAUCAYAAACTQC2+AAAAAXNSR0IArs4c6QAAAXdJREFUSIntkz1LQlEYx3+3PIJoWV1FEdMhGmq1FsGtXXBrEKLBpaUPkC66NNfUEC5Bk9BnEPwCBS613BySqwVxK/QQp6G8vl0lIqLB/3Se5/zP8zvPeYGZZvpraQAul+vXCyc3guooHaN0ZVCrm9q3QOlIQc2/C8e5SjOvjebOcpuqN46ueACYSkhHCgpAd0cRwu3oyVBUTsBy1WQvFaTx+Ea5ak4+unSkoHqAh9dbdBEDQAg3UnZpSwNdxOwNmM/3VJp5bbCbctUEoFY3tTmnXe4ED8YgQrjtGEAXMdrSQMouUnYJLq6SCRVtiNHqUKubWq1ualOPbhQC2HFbGjZs0LuVugA8jvXGQEk9q9aWtocgo104QV66T4S+Lt5odcZA9h1lE34FEA94ub7Zn9ToREXjpyyHdTsuVe6GHocLIJvwq3jAaycXwyecF3Y/A5+v77asfs6y+nOWxeFx3zYKwenDZhN+lVpfIHfZGDNP0k/WzPT/9AHAi4szMVNJRQAAAABJRU5ErkJggg==",
+            ["bubblegum"] = "iVBORw0KGgoAAAANSUhEUgAAABoAAAAUCAYAAACTQC2+AAAAAXNSR0IArs4c6QAAAVRJREFUSIntkjFIAmEUx38HYXAkN0goHIKI4GDgcuMtjYWDQzTUcqOrc7QXRLMQiKtNDW5RRAUStGjHTbddYIcpSGDj1yB3nnqnrYX/6Xvfe+//e+/jg7XW+jfKZjSRPxEim9EEgPSbpqZqiM3v8Fx52FjwSBmm8M6KWmAlqKkaAqCwlUZW4qE1XdtaAKYMU9CqQKkGgPxgRIOaqiE8QLtnUZTTkyYlznj0RWfsUJSnA3Rti/KwIR2ZugC4v6hBqwLAx+ezFAo6k/dEKa3NQDzDINSDeQN0bYvrRxsAtzPi7vjN99+I2mgZpDN2AGYg7Z5Fvf5CkkSo3wKoGtPF4c7uDKTds3zjKIgzcEnmEv4285KCAAAtmYtacqmcgcvt1bsfB5/N36ga00UQ8OraXN48TYLtQHWf6V0/kOvD+cF+JCRU1ZguzPypWFk41+P9trX+rn4AuGiGP5x9Ac8AAAAASUVORK5CYII=",
+            ["golden"] = "iVBORw0KGgoAAAANSUhEUgAAABoAAAAUCAYAAACTQC2+AAAAAXNSR0IArs4c6QAAAY5JREFUSIntlL9LAmEYx78n51nSEHVhp05NDaUE7oaDSxRCQyA5ODkZNDjVFEFBg63OOfcHuLk0OaQILkUgdOeFCAq+4g94G+p9U+9OKwwa/C73Ps97z/fzPO97HDDXX4qWgnRS/B3Zphmz9fhzJiDBlxdoKUiZqZZwcChbzwTExEyVTJfnlEwXgi8vTDMO+N1Ue9ilAb+bAsDEAjbRyfUzRFvf9J10Vjd4VHJhfrzLSz1MBSWjXgoArlUJdsn8yGp6wwCs5MI0lirj7mYLABBLla1ByaiXMkBVbUORRQCAXXKg3+tCqw+gyCJvoKY3kM7qwvA0sVQZAFAoqoJoBjneWzNAmCGLFVn8hH3UrLtWcBpf5JCnlzcUiiofxBTEOreCaPUBAIxMWVXbkBasvy0DKBKS6famPAKpqm1ubAVptjo4i+/wacYlDAMAwONyWnY1Sc1WB0cHHh7vJx5H7l9kkGHAq05we3EIAHA6v/KEEJ4jhPA9QgjOr+4tIaaKhGR6mdz40W/mNzVz/T+9A6Asr2VFwz0WAAAAAElFTkSuQmCC",
+            ["ninja"] = "iVBORw0KGgoAAAANSUhEUgAAABoAAAAUCAYAAACTQC2+AAAAAXNSR0IArs4c6QAAAWpJREFUSIntkjFLw0AYhp/YRBIaYmmXSqUIHRyLiHTU6iIo1KX0H/jnhGI3lwrtJlI7dytZ7BJJbUljosSh5kgaqygiDn2n7+7e7557Pw5WWumvJQHIsvzrF+dyxSCfP2A06mBZpiRA5v5RAFC8u5EWmwqFw6CpTwCojTOxs9GonfCXSrUgrFXVSCYKYSEwug718DQW9aaxQdQfBdl2n0xmFwDb7n88utudvQCg8byFoqRwHAtFmSdRlBS+/4rv2zT1aayvMuhJF/enQbsuCwAQH91XEEVJAcSgvm/HHjCZjEmndY4vX7g+n2KaHZFybTFJZdCTzh7lTyG+bycgjmORmtto12VOrvRY2kSibLYc5HKlGMRxrPcL55CwjkIAPM/FMPLCE00kQNlsOQDQtPiv+o48z0XT1AQEQA5TRAGzmU212gBAVdfFvut6Ys91PXHmuh7dbmspZOnoDGOb4bCVMC/TT3pW+n96A6STo45m/xD9AAAAAElFTkSuQmCC",
+            ["rainbow"] = "iVBORw0KGgoAAAANSUhEUgAAABoAAAAUCAYAAACTQC2+AAAAAXNSR0IArs4c6QAAAdtJREFUSIntkb1v01AUxX9OYyeNihucRIlePmiXqgNSRFn42Ji64YKECmJlADLwR+QP6JQsHbsgxMDEBEggBja6oAjBYCG7wYWQOnWI7IjHYBGUphF0Qyhnujr3vXPuuRdmmOG/QbFYldv5vCwWqxJA+ZtPtUJBxpUjT8MQsutstXYmNO7VDSncqC48VAGI/8kAoKBpqLHY70buGtgH4MGDrCnJLowZ/uA7zccr3N14TzuE5nx5eqKaYchCIoGqKFhBgKjcBEBt9wnlECf8iqgso85FE+/1XLZaO4pRvyo3eQXAk2YZANvePbqPCJcyt2Xp1Crn01+wBm1EKhcJ2gdYwWdEZRkAp7+PSOUAaPklnl7ZI1H8BMBl5xmPGt2R/tTVfeypdIcB6fhZPBlNradshLGE40UHEMkcBJJWWMb1LUCDwTl6yTfE0Mb0JhKV5k2ZT13kMLRIxgTxOZXD0OKMDum4oDt0gKgG0BIqrm/xru2RWVhlvwbDzgt8QvzGS2XCaNFciw7//MK0kFMx8EHRPFYyOm/XI87dboyFUH6ZaOL0iAycb+zevwNASjdGfN/rjLi+1xn1+l6HW5uv+bChH2tyLBbNNSnq1+VJEiXNqryxVD/Rnxn+PfwE4JWgyajsTN8AAAAASUVORK5CYII=",
+        };
+
         /// <summary>
         /// Turtle sprite for a skin. Default skin = "turtle"; others = "turtle_{id}".
         /// A PNG with that name in Resources/Sprites replaces the generated one.
@@ -351,7 +439,7 @@ namespace TurtleBlaster
             var skin = SkinDatabase.Get(skinId);
             string name = skin.id == SkinDatabase.DefaultId ? "turtle" : "turtle_" + skin.id;
             if (cache.TryGetValue(name, out var s) && s != null) return s;
-            s = Resources.Load<Sprite>("Sprites/" + name);
+            s = LoadOverrideSprite(name);
             if (s == null) s = Turtle(skin);
             cache[name] = s;
             return s;
@@ -359,49 +447,15 @@ namespace TurtleBlaster
 
         static Sprite Turtle(SkinDef skin)
         {
-            var c = new PixelCanvas(26, 20);
-            // legs
-            c.Rect(5, 2, 4, 4, skin.skin);
-            c.Rect(14, 2, 4, 4, skin.skin);
-            // shell dome
-            c.Ellipse(11, 7, 9.5f, 8f, skin.shell);
-            c.ClearBelow(5);
-            // shell highlights
-            c.Rect(7, 11, 3, 2, skin.shellLight);
-            c.Rect(12, 12, 3, 2, skin.shellLight);
-            c.Rect(10, 8, 2, 2, skin.shellLight);
-            c.Rect(15, 8, 2, 2, skin.shellLight);
-            // head
-            c.Ellipse(21, 9, 4f, 3.5f, skin.skin);
-            // helmet
-            c.Ellipse(21, 11, 4.2f, 2.8f, skin.helmet);
-            c.Rect(18, 10, 8, 1, skin.helmet);
-            // eye
-            c.Rect(22, 8, 3, 3, White);
-            c.Set(24, 9, K);
-            c.Set(24, 8, K);
-            // smile
-            c.Rect(21, 6, 3, 1, K);
-
-            switch (skin.accessory)
+            string id = skin != null && !string.IsNullOrEmpty(skin.id) ? skin.id : SkinDatabase.DefaultId;
+            if (!TurtlePngBase64.TryGetValue(id, out var b64)) b64 = TurtlePngBase64[SkinDatabase.DefaultId];
+            var tex = new Texture2D(26, 20, TextureFormat.RGBA32, false)
             {
-                case SkinAccessory.Shades:
-                    c.Rect(20, 8, 6, 2, K);
-                    c.Set(24, 9, PixelCanvas.C("#9ad0ff"));
-                    break;
-                case SkinAccessory.Crown:
-                    c.Rect(18, 13, 7, 2, Yellow);
-                    c.Set(18, 15, Yellow); c.Set(21, 15, Yellow); c.Set(24, 15, Yellow);
-                    c.Set(21, 14, Red);
-                    break;
-                case SkinAccessory.Headband:
-                    c.Rect(17, 11, 9, 1, Red);
-                    c.Rect(15, 10, 2, 1, Red);   // tails flying back
-                    c.Rect(14, 9, 2, 1, Red);
-                    break;
-            }
-            c.Outline(K);
-            return c.ToSprite(16f);
+                filterMode = FilterMode.Point,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            tex.LoadImage(Convert.FromBase64String(b64));
+            return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 16f, 0, SpriteMeshType.FullRect);
         }
 
         static Sprite Bird(bool wingsUp)

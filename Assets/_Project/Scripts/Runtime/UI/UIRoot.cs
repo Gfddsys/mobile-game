@@ -18,12 +18,12 @@ namespace TurtleBlaster
         RectTransform hud, menu, garage, summary, pause, popups;
 
         // hud widgets
-        Text distanceText, scoreText, comboText, coinText, partText, boostBanner, shieldText;
+        Text distanceText, scoreText, comboText, missionHudText, coinText, partText, boostBanner, shieldText;
         Image fuelFill, stuntFill;
         RectTransform touchRoot;
 
         // menu widgets
-        Text bestText, menuWallet;
+        Text bestText, menuMissionText, menuWallet;
         Button sfxBtn, musicBtn;
 
         // garage widgets
@@ -142,12 +142,11 @@ namespace TurtleBlaster
             sb.AppendLine("Distance   <color=#ffd23f>" + Mathf.RoundToInt(s.distance) + " m</color>" + (s.newBestDistance ? "  <color=#4cd964>NEW BEST!</color>" : "") +
                           (s.leaderboardRank > 0 ? "   <color=#9ad0ff>Rank #" + s.leaderboardRank + "</color>" : ""));
             sb.AppendLine("Score      <color=#ffd23f>" + s.score + "</color>" + (s.newBestScore ? "  <color=#4cd964>NEW BEST!</color>" : ""));
-            sb.AppendLine("Flips      " + s.flips + "     Perfect landings  " + s.perfectLandings);
+            sb.AppendLine("Flips      " + s.flips + "     Perfect landings  " + s.perfectLandings + (s.closeCalls > 0 ? "     Close calls  " + s.closeCalls : ""));
             sb.AppendLine("Top speed  " + Mathf.RoundToInt(s.topSpeed * 3.6f) + " km/h     Best combo  x" + s.maxCombo);
             sb.AppendLine("Earned     <color=#ffd23f>+" + s.coins + " coins</color>   <color=#9ad0ff>+" + s.parts + " parts</color>");
             summaryBody.text = sb.ToString();
             RefreshSummaryExtras(s);
-
         }
 
         public void RefreshWallets()
@@ -157,6 +156,11 @@ namespace TurtleBlaster
             if (menuWallet != null) menuWallet.text = w;
             if (garageWallet != null) garageWallet.text = w;
             if (bestText != null) bestText.text = "BEST  " + s.bestDistance + " m";
+            if (menuMissionText != null)
+            {
+                var m = s.GetCurrentMission();
+                menuMissionText.text = "MISSION: " + m.title + "  <color=#ffd23f>(+" + m.rewardCoins + " coins)</color>";
+            }
             if (sfxBtn != null) UIFactory.SetButtonLabel(sfxBtn, "SFX " + (s.sfxOn ? "ON" : "OFF"));
             if (musicBtn != null) UIFactory.SetButtonLabel(musicBtn, "MUSIC " + (s.musicOn ? "ON" : "OFF"));
             if (garage != null && garage.gameObject.activeSelf) RefreshGarage();
@@ -165,9 +169,21 @@ namespace TurtleBlaster
 
         public void Popup(string text, Color color, int size = 64)
         {
-            var t = UIFactory.Label(popups, text, size, color, TextAnchor.MiddleCenter, FontStyle.Bold, "Popup");
+            int boostedSize = size + Mathf.Min(gm != null ? gm.Combo * 3 : 0, 18);
+            var t = UIFactory.Label(popups, text, boostedSize, color, TextAnchor.MiddleCenter, FontStyle.Bold, "Popup");
             var rt = (RectTransform)t.transform;
-            UIFactory.Place(rt, new Vector2(0.5f, 0.62f), new Vector2(Random.Range(-60f, 60f), 0), new Vector2(900, 120));
+
+            Vector2 anchor = new Vector2(0.5f, 0.62f);
+            if (gm != null && gm.State == GameState.Playing && gm.Player != null && gm.Cam != null && gm.Cam.Cam != null)
+            {
+                Vector3 vp = gm.Cam.Cam.WorldToViewportPoint(gm.Player.transform.position + new Vector3(0.3f, 1.85f, 0f));
+                if (vp.z > 0f)
+                {
+                    anchor = new Vector2(Mathf.Clamp(vp.x, 0.22f, 0.78f), Mathf.Clamp(vp.y, 0.38f, 0.76f));
+                }
+            }
+
+            UIFactory.Place(rt, anchor, new Vector2(Random.Range(-50f, 50f), Random.Range(-15f, 20f)), new Vector2(960, 130));
             t.gameObject.AddComponent<FloatingText>();
         }
 
@@ -184,6 +200,8 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)scoreText.transform, new Vector2(0, 1), new Vector2(44, -112), new Vector2(520, 50));
             comboText = UIFactory.Label(hud, "", 40, UIFactory.Good, TextAnchor.UpperLeft);
             UIFactory.Place((RectTransform)comboText.transform, new Vector2(0, 1), new Vector2(44, -158), new Vector2(520, 50));
+            missionHudText = UIFactory.Label(hud, "", 28, new Color(0.85f, 0.92f, 1f), TextAnchor.UpperLeft);
+            UIFactory.Place((RectTransform)missionHudText.transform, new Vector2(0, 1), new Vector2(44, -206), new Vector2(680, 44));
 
             // fuel + stunt bars (top centre)
             var fuelLabel = UIFactory.Label(hud, "FUEL", 30, Color.white, TextAnchor.MiddleRight);
@@ -197,8 +215,8 @@ namespace TurtleBlaster
 
             boostBanner = UIFactory.Label(hud, "SUPER BOOST!", 72, UIFactory.Accent);
             UIFactory.Place((RectTransform)boostBanner.transform, new Vector2(0.5f, 1), new Vector2(0, -190), new Vector2(900, 100));
-            shieldText = UIFactory.Label(hud, "", 36, new Color(0.6f, 0.85f, 1f));
-            UIFactory.Place((RectTransform)shieldText.transform, new Vector2(0.5f, 1), new Vector2(0, -150), new Vector2(600, 40));
+            shieldText = UIFactory.Label(hud, "", 34, new Color(0.6f, 0.85f, 1f));
+            UIFactory.Place((RectTransform)shieldText.transform, new Vector2(0.5f, 1), new Vector2(0, -150), new Vector2(720, 44));
 
             // pickups counters (top right)
             var coinIcon = UIFactory.Image(hud, "CoinIcon", SpriteLibrary.Get("coin"), Color.white);
@@ -265,6 +283,10 @@ namespace TurtleBlaster
             coinText.text = s.coins.ToString();
             partText.text = s.parts.ToString();
 
+            var m = SaveData.Current.GetCurrentMission();
+            int prog = Mathf.Min(m.GetProgress(s), m.target);
+            missionHudText.text = "MISSION: " + m.title + " (" + prog + "/" + m.target + ")";
+
             if (p != null)
             {
                 fuelFill.fillAmount = Mathf.Lerp(fuelFill.fillAmount, p.Fuel01, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
@@ -273,7 +295,15 @@ namespace TurtleBlaster
                 stuntFill.color = p.SuperBoost ? Color.HSVToRGB(Mathf.Repeat(Time.time * 2f, 1f), 0.6f, 1f) : UIFactory.Blue;
                 boostBanner.enabled = p.SuperBoost;
                 if (p.SuperBoost) boostBanner.transform.localScale = Vector3.one * (1f + Mathf.Sin(Time.time * 14f) * 0.06f);
-                shieldText.text = p.FreeHitsLeft > 0 ? "SHELL x" + p.FreeHitsLeft : "";
+
+                string status = "";
+                if (p.FreeHitsLeft > 0) status = "SHELL x" + p.FreeHitsLeft;
+                if (p.MagnetActive)
+                {
+                    if (status.Length > 0) status += "   ";
+                    status += "<color=#ff82c4>MAGNET " + Mathf.CeilToInt(p.MagnetTimeLeft) + "s</color>";
+                }
+                shieldText.text = status;
             }
         }
 
@@ -304,12 +334,14 @@ namespace TurtleBlaster
             var ranksBtn = UIFactory.MakeButton(menu, "RANKS", UIFactory.Panel, () => gm.OpenLeaderboard(), new Vector2(250, 100), 40);
             UIFactory.Place((RectTransform)ranksBtn.transform, new Vector2(0.74f, 0.15f), new Vector2(135, 0), new Vector2(250, 100));
 
+            menuMissionText = UIFactory.Label(menu, "", 32, new Color(0.85f, 0.95f, 1f), TextAnchor.LowerLeft);
+            UIFactory.Place((RectTransform)menuMissionText.transform, new Vector2(0, 0), new Vector2(40, 106), new Vector2(950, 48));
             bestText = UIFactory.Label(menu, "BEST 0 m", 44, Color.white, TextAnchor.LowerLeft);
             UIFactory.Place((RectTransform)bestText.transform, new Vector2(0, 0), new Vector2(40, 50), new Vector2(600, 60));
             menuWallet = UIFactory.Label(menu, "", 44, Color.white, TextAnchor.UpperRight);
             UIFactory.Place((RectTransform)menuWallet.transform, new Vector2(1, 1), new Vector2(-40, -30), new Vector2(800, 60));
 
-            var hint = UIFactory.Label(menu, "SPACE = Play   G = Garage   K = Skins   B = Shop   L = Ranks   |   W/S Thrust/Slam   A/D Flips   Esc Pause", 26, Color.white);
+            var hint = UIFactory.Label(menu, "Controls:  W/S = Thrust/Slam   A/D = Flips   Space = Jump", 26, Color.white);
             UIFactory.Place((RectTransform)hint.transform, new Vector2(0.5f, 0), new Vector2(0, 8), new Vector2(1800, 36));
 
             sfxBtn = UIFactory.MakeButton(menu, "SFX ON", UIFactory.Panel, () => { var s = SaveData.Current; s.sfxOn = !s.sfxOn; s.Save(); }, new Vector2(230, 80), 32);
@@ -356,8 +388,6 @@ namespace TurtleBlaster
                 i++;
             }
 
-            var gh = UIFactory.Label(garage, "Keyboard:  1-4 = Buy upgrade    SPACE = Play    Esc = Back", 30, Color.white);
-            UIFactory.Place((RectTransform)gh.transform, new Vector2(0.5f, 0), new Vector2(0, 160), new Vector2(1400, 40));
             var back = UIFactory.MakeButton(garage, "BACK", new Color(0.8f, 0.3f, 0.3f), () => gm.ShowMenu(), new Vector2(320, 100), 52);
             UIFactory.Place((RectTransform)back.transform, new Vector2(0.5f, 0), new Vector2(0, 40), new Vector2(320, 100));
         }
@@ -442,8 +472,6 @@ namespace TurtleBlaster
             summaryBody.lineSpacing = 1.25f;
             UIFactory.Place((RectTransform)summaryBody.transform, new Vector2(0, 0.5f), new Vector2(740, -45), new Vector2(840, 400), new Vector2(0, 0.5f));
 
-            var sh = UIFactory.Label(panel.transform, "SPACE = Retry   G = Garage   A = x2 coins ad   Esc = Menu", 24, new Color(0.8f, 0.85f, 1f));
-            UIFactory.Place((RectTransform)sh.transform, new Vector2(0.5f, 0), new Vector2(0, 4), new Vector2(1200, 30), new Vector2(0.5f, 0));
             BuildSummaryExtras((RectTransform)panel.transform);
             var retry = UIFactory.MakeButton(panel.transform, "RETRY", new Color(0.2f, 0.7f, 0.3f), () => gm.StartRun(), new Vector2(460, 120), 60);
             UIFactory.Place((RectTransform)retry.transform, new Vector2(0.5f, 0), new Vector2(-500, 36), new Vector2(460, 120));

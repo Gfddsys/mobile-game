@@ -21,21 +21,37 @@ namespace TurtleBlaster
         public HazardType type;
         public bool isAir;
         public bool heavy;
+        public bool closeCallCounted;
         public string DisplayName => type.ToString();
     }
 
-    public enum PickupType { Coin, Part }
+    public enum PickupType { Coin, Part, Magnet, Fuel, Shield }
 
     public class Pickup : MonoBehaviour
     {
         public PickupType type;
         float baseY;
         float phase;
+        bool magnetized;
 
         void Start() { baseY = transform.position.y; phase = Random.value * 6f; }
 
         void Update()
         {
+            var gm = GameManager.Instance;
+            if (gm != null && gm.Player != null && gm.Player.Alive && gm.Player.MagnetActive &&
+                (type == PickupType.Coin || type == PickupType.Part))
+            {
+                Vector3 target = gm.Player.transform.position + Vector3.up * 0.45f;
+                float dist = Vector2.Distance(transform.position, target);
+                if (dist < 8.5f) magnetized = true;
+                if (magnetized)
+                {
+                    transform.position = Vector3.MoveTowards(transform.position, target, 24f * Time.deltaTime);
+                    return;
+                }
+            }
+
             var p = transform.position;
             p.y = baseY + Mathf.Sin(Time.time * 4f + phase) * 0.06f;
             transform.position = p;
