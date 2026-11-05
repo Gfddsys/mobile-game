@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace TurtleBlaster
 {
-    public enum GameState { Menu, Playing, Paused, Dying, Summary, Garage }
+    public enum GameState { Menu, Playing, Paused, Dying, Reviving, Summary, Garage, Skins, Shop, Leaderboard }
 
     /// <summary>
     /// Game flow controller (GDD section 2 - Core Game Loop):
@@ -121,7 +121,8 @@ namespace TurtleBlaster
                 if (State == GameState.Playing && Player.Alive)
                 {
                     float dist = Mathf.Max(0f, Player.transform.position.x - startX);
-                    Stats.distance = dist;
+                    Stats.distance = Mathf.Max(Stats.distance, dist);   // a revive restarts a bit behind; never count backwards
+                    dist = Stats.distance;
                     Stats.topSpeed = Mathf.Max(Stats.topSpeed, Player.Speed);
                     Stats.score = Mathf.FloorToInt(dist * cfg.pointsPerMeter) + bonusScore + Mathf.FloorToInt(grindScore);
                 }
@@ -140,6 +141,7 @@ namespace TurtleBlaster
         // =====================================================================
         void HandleKeyboardShortcuts()
         {
+            if (UI.OverlayOpen) return;   // ad / purchase / revive dialogs handle their own keys
             bool esc = Input.GetKeyDown(KeyCode.Escape);
             bool confirm = Input.GetKeyDown(KeyCode.Space) || Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter);
             switch (State)
@@ -147,6 +149,24 @@ namespace TurtleBlaster
                 case GameState.Menu:
                     if (confirm) StartRun();
                     else if (Input.GetKeyDown(KeyCode.G)) OpenGarage();
+                    else if (Input.GetKeyDown(KeyCode.K)) OpenSkins();
+                    else if (Input.GetKeyDown(KeyCode.B)) OpenShop();
+                    else if (Input.GetKeyDown(KeyCode.L)) OpenLeaderboard();
+                    break;
+                case GameState.Skins:
+                    if (esc || Input.GetKeyDown(KeyCode.M)) ShowMenu();
+                    else
+                        for (int i = 0; i < 7; i++)
+                            if (Input.GetKeyDown(KeyCode.Alpha1 + i) || Input.GetKeyDown(KeyCode.Keypad1 + i)) UI.SkinAction(i);
+                    break;
+                case GameState.Shop:
+                    if (esc || Input.GetKeyDown(KeyCode.M)) ShowMenu();
+                    else
+                        for (int i = 0; i < 4; i++)
+                            if (Input.GetKeyDown(KeyCode.Alpha1 + i) || Input.GetKeyDown(KeyCode.Keypad1 + i)) UI.ShopAction(i);
+                    break;
+                case GameState.Leaderboard:
+                    if (esc || confirm || Input.GetKeyDown(KeyCode.M)) ShowMenu();
                     break;
                 case GameState.Playing:
                     if (esc || Input.GetKeyDown(KeyCode.P)) Pause();
@@ -159,6 +179,7 @@ namespace TurtleBlaster
                 case GameState.Summary:
                     if (confirm || Input.GetKeyDown(KeyCode.R)) StartRun();
                     else if (Input.GetKeyDown(KeyCode.G)) OpenGarage();
+                    else if (Input.GetKeyDown(KeyCode.A)) WatchAdForDoubleCoins();
                     else if (esc || Input.GetKeyDown(KeyCode.M)) ShowMenu();
                     break;
                 case GameState.Garage:
@@ -190,6 +211,10 @@ namespace TurtleBlaster
             State = GameState.Garage;
             UI.ShowGarage();
         }
+
+        public void OpenSkins() { Time.timeScale = 1f; State = GameState.Skins; UI.ShowSkins(); }
+        public void OpenShop() { Time.timeScale = 1f; State = GameState.Shop; UI.ShowShop(); }
+        public void OpenLeaderboard() { Time.timeScale = 1f; State = GameState.Leaderboard; UI.ShowLeaderboard(); }
 
         void StartAttractMode()
         {
@@ -395,8 +420,67 @@ namespace TurtleBlaster
             UI.SetVisible(true);
 
             Time.timeScale = 1f;
-            yield return new WaitForSecondsRealtime(1.1f);
+            yield return new WaitForSecondsRealtime(0.6f);
+
+            // Monetization: offer one revive per run for watching a rewarded ad
+            if (CanRevive)
+            {
+                State = GameState.Reviving;
+                int choice = 0;
+                UI.ShowRevive(cfg.reviveOfferSeconds, accept => choice = accept ? 1 : 2);
+                while (choice == 0) yield return null;
+                if (choice == 1)
+                {
+                    int ad = 0;
+                    Services.Ads.ShowRewarded("revive", ok => ad = ok ? 1 : 2);
+                    while (ad == 0) yield return null;
+                    if (ad == 1) { dyingRoutine = null; Revive(); yield break; }
+                }
+            }
+            yield return new WaitForSecondsRealtime(0.3f);
             FinishRun();
+        }
+
+        bool CanRevive => !Stats.revived && Stats.distance >= cfg.reviveMinDistance && Services.Ads.IsRewardedReady;
+
+        /// <summary>Puts a fresh turtle back on the track a little behind the crash, with a short shield.</summary>
+        void Revive()
+        {
+            Stats.revived = true;
+            Stats.causeOfDeath = "";
+            float x = Mathf.Max(startX + 1f, Player.Body.position.x - 3f);
+            World.ClearHazards(x - 2f, x + cfg.reviveClearDistance);
+            Player.Dispose();
+            Player = TurtleController.Create(new Vector2(x, World.HeightAt(x) + 0.6f), SaveData.Current);
+            Player.Body.linearVelocity = new Vector2(cfg.cruiseSpeed, 0f);
+            Player.SetFuel01(0.6f);
+            Player.GrantShield(cfg.reviveShieldSeconds);
+            Hook(Player);
+            Cam.SetTarget(Player.FocusTarget, false);
+            State = GameState.Playing;
+            UI.ShowHud();
+            UI.Popup("REVIVED!", UIFactory.Good, 96);
+            AudioManager.Sfx("boost");
+        }
+
+        public bool CanDoubleCoins => State == GameState.Summary && !Stats.coinsDoubled && Stats.coins > 0 && Services.Ads.IsRewardedReady;
+
+        /// <summary>Summary screen: watch a rewarded ad to double the coins earned this run.</summary>
+        public void WatchAdForDoubleCoins()
+        {
+            if (!CanDoubleCoins) return;
+            var stats = Stats;
+            Services.Ads.ShowRewarded("double_coins", ok =>
+            {
+                if (!ok || stats.coinsDoubled || stats != Stats) return;
+                var save = SaveData.Current;
+                save.coins += stats.coins;   // the first share was banked in FinishRun
+                stats.coins *= 2;
+                stats.coinsDoubled = true;
+                save.Save();
+                AudioManager.Sfx("buy");
+                if (State == GameState.Summary) UI.RefreshSummary(stats);
+            });
         }
 
         IEnumerator CaptureRoutine(System.Action done)
@@ -458,6 +542,21 @@ namespace TurtleBlaster
             save.coins += Stats.coins;
             save.parts += Stats.parts;
             save.totalRuns++;
+            if (Stats.distance >= 1f)
+            {
+                var stats = Stats;
+                Services.Leaderboard.Submit(new LeaderboardEntry
+                {
+                    name = save.playerName,
+                    distance = Mathf.FloorToInt(stats.distance),
+                    score = stats.score,
+                    date = System.DateTime.Now.ToString("yyyy-MM-dd")
+                }, rank =>
+                {
+                    stats.leaderboardRank = rank;
+                    if (State == GameState.Summary && stats == Stats) UI.RefreshSummary(stats);
+                });
+            }
             save.Save();
 
             State = GameState.Summary;

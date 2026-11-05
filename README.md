@@ -113,6 +113,11 @@ SuperBoostChanged, Grinding, Crashed) แล้วจัดการคะแน
 - แรงกระโดดกระจายออกใน 0.08 วินาที, กล้องใช้ SmoothDamp ทั้งแกน X/Y และ zoom, แถบ Fuel/Stunt เลื่อนนุ่ม
 - Air assist (`airAssistStrength`): ตัวช่วยจัดระนาบอ่อนๆ ในอากาศ ทำงานเฉพาะตอนไม่ได้ตีลังกาและไม่ได้หมุนอยู่ — กระโดดธรรมดาลงพื้นเรียบ แต่ท่าตีลังกายังเป็นแรงเฉื่อยล้วนตาม GDD (ตั้ง 0 เพื่อปิด)
 
+### สกิน / ร้านค้า / Leaderboard / โฆษณา
+ดูรายละเอียดและขั้นตอนต่อ SDK จริงที่ **[docs/MONETIZATION.md](docs/MONETIZATION.md)**
+- 7 สกิน (ฟรี 1, เหรียญ 5, เงินจริง 1), แพคเหรียญเงินจริง 3 ขนาด, ดูโฆษณา x2 เหรียญ, ดูโฆษณาชุบชีวิต, Leaderboard ระยะทาง
+- ตอนนี้ใช้บริการจำลอง (โฆษณา/ร้านค้าปลอม, ตารางคะแนนในเครื่อง) ซึ่งทำงานเฉพาะใน Editor/Development Build
+
 ### เปลี่ยนงานภาพ
 ตอนนี้สไปรต์ทั้งหมดเป็น placeholder ที่วาดด้วยโค้ด (`Art/SpriteLibrary.cs`)
 1. เมนู **Turtle Blaster ▸ Art ▸ Export Placeholder Sprites to PNG** → ได้ PNG ที่ `Art/Placeholders/` (ขนาดและ PPU ถูกต้อง)
@@ -129,7 +134,7 @@ SuperBoostChanged, Grinding, Crashed) แล้วจัดการคะแน
 ข้อความ UI เป็นภาษาอังกฤษ (ฟอนต์ built-in ไม่มีอักษรไทย) — ถ้าจะใส่ไทย: เปลี่ยน `UIFactory.DefaultFont` เป็นฟอนต์ไทย หรือย้ายไป TextMeshPro + Unity Localization
 
 ### ไอเดียต่อยอด (ยังไม่ได้ทำ)
-- ธีมด่านเพิ่ม (กลางคืน/ฝน), เควสต์รายวัน, Leaderboard (Unity Gaming Services), โฆษณา Rewarded (ดับเบิลเหรียญ), IAP
+- ธีมด่านเพิ่ม (กลางคืน/ฝน), เควสต์รายวัน, ต่อ SDK จริงของโฆษณา/IAP/Leaderboard ออนไลน์ (ดู docs/MONETIZATION.md)
 - แชร์รูป Snapshot (ตอนนี้เซฟไว้ที่ `Application.persistentDataPath/wipeouts/`)
 - Ragdoll หลายชิ้นส่วน (ตอนนี้เป็นเต่าก้อนเดียวหมุนกระเด้ง), อนิเมชันตาเหลือก
 - ปรับ hazard spawner เป็น pattern/ScriptableObject ให้ designer ออกแบบด่านเองได้

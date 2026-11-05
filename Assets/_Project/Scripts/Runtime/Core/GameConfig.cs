@@ -91,6 +91,16 @@ namespace TurtleBlaster
         public float stallSpeed = 0.7f;
         public float stallTimeToGameOver = 3.5f;
 
+        [Header("Monetization")]
+        [Tooltip("A revive is only offered after this many metres")]
+        public float reviveMinDistance = 30f;
+        [Tooltip("Seconds the revive offer stays on screen")]
+        public float reviveOfferSeconds = 5f;
+        [Tooltip("Seconds of full invulnerability after a revive")]
+        public float reviveShieldSeconds = 3f;
+        [Tooltip("Obstacles this far ahead of the revive point are removed")]
+        public float reviveClearDistance = 25f;
+
         [Header("Scoring")]
         public int pointsPerMeter = 1;
         public int pointsPerFlip = 150;

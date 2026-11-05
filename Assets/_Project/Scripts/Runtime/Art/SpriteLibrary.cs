@@ -75,34 +75,7 @@ namespace TurtleBlaster
                 return c.ToSprite(4f);
             };
 
-            g["turtle"] = () =>
-            {
-                var c = new PixelCanvas(26, 20);
-                // legs
-                c.Rect(5, 2, 4, 4, TurtleGreen);
-                c.Rect(14, 2, 4, 4, TurtleGreen);
-                // shell dome
-                c.Ellipse(11, 7, 9.5f, 8f, ShellGreen);
-                c.ClearBelow(5);
-                // shell highlights
-                c.Rect(7, 11, 3, 2, ShellLight);
-                c.Rect(12, 12, 3, 2, ShellLight);
-                c.Rect(10, 8, 2, 2, ShellLight);
-                c.Rect(15, 8, 2, 2, ShellLight);
-                // head
-                c.Ellipse(21, 9, 4f, 3.5f, TurtleGreen);
-                // helmet
-                c.Ellipse(21, 11, 4.2f, 2.8f, Red);
-                c.Rect(18, 10, 8, 1, Red);
-                // eye
-                c.Rect(22, 8, 3, 3, White);
-                c.Set(24, 9, K);
-                c.Set(24, 8, K);
-                // smile
-                c.Rect(21, 6, 3, 1, K);
-                c.Outline(K);
-                return c.ToSprite(16f);
-            };
+            g["turtle"] = () => Turtle(SkinDatabase.Get(SkinDatabase.DefaultId));
 
             g["board"] = () =>
             {
@@ -340,6 +313,68 @@ namespace TurtleBlaster
             };
 
             return g;
+        }
+
+        /// <summary>
+        /// Turtle sprite for a skin. Default skin = "turtle"; others = "turtle_{id}".
+        /// A PNG with that name in Resources/Sprites replaces the generated one.
+        /// </summary>
+        public static Sprite GetTurtle(string skinId)
+        {
+            var skin = SkinDatabase.Get(skinId);
+            string name = skin.id == SkinDatabase.DefaultId ? "turtle" : "turtle_" + skin.id;
+            if (cache.TryGetValue(name, out var s) && s != null) return s;
+            s = Resources.Load<Sprite>("Sprites/" + name);
+            if (s == null) s = Turtle(skin);
+            cache[name] = s;
+            return s;
+        }
+
+        static Sprite Turtle(SkinDef skin)
+        {
+            var c = new PixelCanvas(26, 20);
+            // legs
+            c.Rect(5, 2, 4, 4, skin.skin);
+            c.Rect(14, 2, 4, 4, skin.skin);
+            // shell dome
+            c.Ellipse(11, 7, 9.5f, 8f, skin.shell);
+            c.ClearBelow(5);
+            // shell highlights
+            c.Rect(7, 11, 3, 2, skin.shellLight);
+            c.Rect(12, 12, 3, 2, skin.shellLight);
+            c.Rect(10, 8, 2, 2, skin.shellLight);
+            c.Rect(15, 8, 2, 2, skin.shellLight);
+            // head
+            c.Ellipse(21, 9, 4f, 3.5f, skin.skin);
+            // helmet
+            c.Ellipse(21, 11, 4.2f, 2.8f, skin.helmet);
+            c.Rect(18, 10, 8, 1, skin.helmet);
+            // eye
+            c.Rect(22, 8, 3, 3, White);
+            c.Set(24, 9, K);
+            c.Set(24, 8, K);
+            // smile
+            c.Rect(21, 6, 3, 1, K);
+
+            switch (skin.accessory)
+            {
+                case SkinAccessory.Shades:
+                    c.Rect(20, 8, 6, 2, K);
+                    c.Set(24, 9, PixelCanvas.C("#9ad0ff"));
+                    break;
+                case SkinAccessory.Crown:
+                    c.Rect(18, 13, 7, 2, Yellow);
+                    c.Set(18, 15, Yellow); c.Set(21, 15, Yellow); c.Set(24, 15, Yellow);
+                    c.Set(21, 14, Red);
+                    break;
+                case SkinAccessory.Headband:
+                    c.Rect(17, 11, 9, 1, Red);
+                    c.Rect(15, 10, 2, 1, Red);   // tails flying back
+                    c.Rect(14, 9, 2, 1, Red);
+                    break;
+            }
+            c.Outline(K);
+            return c.ToSprite(16f);
         }
 
         static Sprite Bird(bool wingsUp)

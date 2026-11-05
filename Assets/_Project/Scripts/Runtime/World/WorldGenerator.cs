@@ -63,6 +63,16 @@ namespace TurtleBlaster
             Despawner.CutoffX = float.NegativeInfinity;
         }
 
+        /// <summary>Removes obstacles between x0 and x1 (used to give a revived player a safe restart).</summary>
+        public void ClearHazards(float x0, float x1)
+        {
+            foreach (var h in spawnedRoot.GetComponentsInChildren<Hazard>())
+            {
+                float x = h.transform.position.x;
+                if (x >= x0 && x <= x1) Destroy(h.gameObject);
+            }
+        }
+
         public float HeightAt(float x)
         {
             EnsureControlPoints(x + 60f);

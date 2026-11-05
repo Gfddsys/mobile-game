@@ -8,7 +8,7 @@ namespace TurtleBlaster
     /// Builds and drives every screen: HUD + touch controls, main menu, garage,
     /// pause and run summary. Pure uGUI created in code at a 1920x1080 reference.
     /// </summary>
-    public class UIRoot : MonoBehaviour
+    public partial class UIRoot : MonoBehaviour
     {
         GameManager gm;
         Canvas canvas;
@@ -61,6 +61,7 @@ namespace TurtleBlaster
             BuildGarage(go.transform);
             BuildSummary(go.transform);
             BuildPause(go.transform);
+            BuildExtras(go.transform);
             HideAll();
 
             SaveData.Current.Changed += RefreshWallets;
@@ -78,6 +79,7 @@ namespace TurtleBlaster
             garage.gameObject.SetActive(false);
             summary.gameObject.SetActive(false);
             pause.gameObject.SetActive(false);
+            HideExtras();
             GameInput.ClearTouch();
         }
 
@@ -113,16 +115,7 @@ namespace TurtleBlaster
         {
             HideAll();
             summary.gameObject.SetActive(true);
-
-            summaryTitle.text = "WIPEOUT!\n<size=40><color=#ffd23f>" + s.causeOfDeath + "</color></size>";
-            var sb = new StringBuilder();
-            sb.AppendLine("Distance   <color=#ffd23f>" + Mathf.RoundToInt(s.distance) + " m</color>" + (s.newBestDistance ? "  <color=#4cd964>NEW BEST!</color>" : ""));
-            sb.AppendLine("Score      <color=#ffd23f>" + s.score + "</color>" + (s.newBestScore ? "  <color=#4cd964>NEW BEST!</color>" : ""));
-            sb.AppendLine("Flips      " + s.flips + "     Perfect landings  " + s.perfectLandings);
-            sb.AppendLine("Top speed  " + Mathf.RoundToInt(s.topSpeed * 3.6f) + " km/h     Best combo  x" + s.maxCombo);
-            sb.AppendLine();
-            sb.AppendLine("Earned     <color=#ffd23f>+" + s.coins + " coins</color>   <color=#9ad0ff>+" + s.parts + " parts</color>");
-            summaryBody.text = sb.ToString();
+            RefreshSummary(s);
 
             if (snapshotSprite != null) Destroy(snapshotSprite);
             if (snapshot != null)
@@ -135,10 +128,26 @@ namespace TurtleBlaster
             }
             else
             {
-                snapshotImg.sprite = SpriteLibrary.Get("turtle");
+                snapshotImg.sprite = SpriteLibrary.GetTurtle(SaveData.Current.selectedSkin);
                 snapshotImg.color = Color.white;
                 snapshotCaption.text = "";
             }
+        }
+
+        /// <summary>Updates the summary texts only (e.g. after the x2 coins ad).</summary>
+        public void RefreshSummary(RunStats s)
+        {
+            summaryTitle.text = "WIPEOUT!\n<size=40><color=#ffd23f>" + s.causeOfDeath + "</color></size>";
+            var sb = new StringBuilder();
+            sb.AppendLine("Distance   <color=#ffd23f>" + Mathf.RoundToInt(s.distance) + " m</color>" + (s.newBestDistance ? "  <color=#4cd964>NEW BEST!</color>" : "") +
+                          (s.leaderboardRank > 0 ? "   <color=#9ad0ff>Rank #" + s.leaderboardRank + "</color>" : ""));
+            sb.AppendLine("Score      <color=#ffd23f>" + s.score + "</color>" + (s.newBestScore ? "  <color=#4cd964>NEW BEST!</color>" : ""));
+            sb.AppendLine("Flips      " + s.flips + "     Perfect landings  " + s.perfectLandings);
+            sb.AppendLine("Top speed  " + Mathf.RoundToInt(s.topSpeed * 3.6f) + " km/h     Best combo  x" + s.maxCombo);
+            sb.AppendLine("Earned     <color=#ffd23f>+" + s.coins + " coins</color>   <color=#9ad0ff>+" + s.parts + " parts</color>");
+            summaryBody.text = sb.ToString();
+            RefreshSummaryExtras(s);
+
         }
 
         public void RefreshWallets()
@@ -151,6 +160,7 @@ namespace TurtleBlaster
             if (sfxBtn != null) UIFactory.SetButtonLabel(sfxBtn, "SFX " + (s.sfxOn ? "ON" : "OFF"));
             if (musicBtn != null) UIFactory.SetButtonLabel(musicBtn, "MUSIC " + (s.musicOn ? "ON" : "OFF"));
             if (garage != null && garage.gameObject.activeSelf) RefreshGarage();
+            RefreshExtrasWallet(w);
         }
 
         public void Popup(string text, Color color, int size = 64)
@@ -242,7 +252,9 @@ namespace TurtleBlaster
 
         void Update()
         {
-            if (gm == null || !hud.gameObject.activeSelf) return;
+            if (gm == null) return;
+            UpdateExtras();
+            if (!hud.gameObject.activeSelf) return;
             var p = gm.Player;
             var s = gm.Stats;
             if (s == null) return;
@@ -282,22 +294,28 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)sub.transform, new Vector2(0.5f, 0.54f), Vector2.zero, new Vector2(900, 60));
 
             var play = UIFactory.MakeButton(menu, "PLAY", new Color(0.2f, 0.7f, 0.3f), () => gm.StartRun(), new Vector2(520, 140), 72);
-            UIFactory.Place((RectTransform)play.transform, new Vector2(0.74f, 0.36f), Vector2.zero, new Vector2(520, 140));
-            var gar = UIFactory.MakeButton(menu, "GARAGE", UIFactory.Blue, () => gm.OpenGarage(), new Vector2(520, 110), 56);
-            UIFactory.Place((RectTransform)gar.transform, new Vector2(0.74f, 0.2f), Vector2.zero, new Vector2(520, 110));
+            UIFactory.Place((RectTransform)play.transform, new Vector2(0.74f, 0.42f), Vector2.zero, new Vector2(520, 140));
+            var gar = UIFactory.MakeButton(menu, "GARAGE", UIFactory.Blue, () => gm.OpenGarage(), new Vector2(250, 100), 40);
+            UIFactory.Place((RectTransform)gar.transform, new Vector2(0.74f, 0.27f), new Vector2(-135, 0), new Vector2(250, 100));
+            var skinsBtn = UIFactory.MakeButton(menu, "SKINS", new Color(0.55f, 0.3f, 0.75f), () => gm.OpenSkins(), new Vector2(250, 100), 40);
+            UIFactory.Place((RectTransform)skinsBtn.transform, new Vector2(0.74f, 0.27f), new Vector2(135, 0), new Vector2(250, 100));
+            var shopBtn = UIFactory.MakeButton(menu, "SHOP", new Color(0.85f, 0.55f, 0.1f), () => gm.OpenShop(), new Vector2(250, 100), 40);
+            UIFactory.Place((RectTransform)shopBtn.transform, new Vector2(0.74f, 0.15f), new Vector2(-135, 0), new Vector2(250, 100));
+            var ranksBtn = UIFactory.MakeButton(menu, "RANKS", UIFactory.Panel, () => gm.OpenLeaderboard(), new Vector2(250, 100), 40);
+            UIFactory.Place((RectTransform)ranksBtn.transform, new Vector2(0.74f, 0.15f), new Vector2(135, 0), new Vector2(250, 100));
 
             bestText = UIFactory.Label(menu, "BEST 0 m", 44, Color.white, TextAnchor.LowerLeft);
-            UIFactory.Place((RectTransform)bestText.transform, new Vector2(0, 0), new Vector2(40, 36), new Vector2(600, 60));
+            UIFactory.Place((RectTransform)bestText.transform, new Vector2(0, 0), new Vector2(40, 50), new Vector2(600, 60));
             menuWallet = UIFactory.Label(menu, "", 44, Color.white, TextAnchor.UpperRight);
             UIFactory.Place((RectTransform)menuWallet.transform, new Vector2(1, 1), new Vector2(-40, -30), new Vector2(800, 60));
 
-            var hint = UIFactory.Label(menu, "Keyboard:  SPACE = Play    G = Garage    W/S = Thrust/Slam    A/D = Backflip/Frontflip    Esc = Pause", 28, Color.white);
-            UIFactory.Place((RectTransform)hint.transform, new Vector2(0.5f, 0), new Vector2(0, 130), new Vector2(1700, 40));
+            var hint = UIFactory.Label(menu, "SPACE = Play   G = Garage   K = Skins   B = Shop   L = Ranks   |   W/S Thrust/Slam   A/D Flips   Esc Pause", 26, Color.white);
+            UIFactory.Place((RectTransform)hint.transform, new Vector2(0.5f, 0), new Vector2(0, 8), new Vector2(1800, 36));
 
             sfxBtn = UIFactory.MakeButton(menu, "SFX ON", UIFactory.Panel, () => { var s = SaveData.Current; s.sfxOn = !s.sfxOn; s.Save(); }, new Vector2(230, 80), 32);
-            UIFactory.Place((RectTransform)sfxBtn.transform, new Vector2(1, 0), new Vector2(-280, 36), new Vector2(230, 80));
+            UIFactory.Place((RectTransform)sfxBtn.transform, new Vector2(1, 1), new Vector2(-280, -110), new Vector2(230, 70));
             musicBtn = UIFactory.MakeButton(menu, "MUSIC ON", UIFactory.Panel, () => { var s = SaveData.Current; s.musicOn = !s.musicOn; s.Save(); }, new Vector2(230, 80), 32);
-            UIFactory.Place((RectTransform)musicBtn.transform, new Vector2(1, 0), new Vector2(-30, 36), new Vector2(230, 80));
+            UIFactory.Place((RectTransform)musicBtn.transform, new Vector2(1, 1), new Vector2(-30, -110), new Vector2(230, 70));
         }
 
         // =====================================================================
@@ -424,8 +442,9 @@ namespace TurtleBlaster
             summaryBody.lineSpacing = 1.25f;
             UIFactory.Place((RectTransform)summaryBody.transform, new Vector2(0, 0.5f), new Vector2(740, -45), new Vector2(840, 400), new Vector2(0, 0.5f));
 
-            var sh = UIFactory.Label(panel.transform, "SPACE = Retry    G = Garage    Esc = Menu", 28, new Color(0.8f, 0.85f, 1f));
-            UIFactory.Place((RectTransform)sh.transform, new Vector2(0.5f, 0), new Vector2(0, 175), new Vector2(1000, 36));
+            var sh = UIFactory.Label(panel.transform, "SPACE = Retry   G = Garage   A = x2 coins ad   Esc = Menu", 24, new Color(0.8f, 0.85f, 1f));
+            UIFactory.Place((RectTransform)sh.transform, new Vector2(0.5f, 0), new Vector2(0, 4), new Vector2(1200, 30), new Vector2(0.5f, 0));
+            BuildSummaryExtras((RectTransform)panel.transform);
             var retry = UIFactory.MakeButton(panel.transform, "RETRY", new Color(0.2f, 0.7f, 0.3f), () => gm.StartRun(), new Vector2(460, 120), 60);
             UIFactory.Place((RectTransform)retry.transform, new Vector2(0.5f, 0), new Vector2(-500, 36), new Vector2(460, 120));
             var gar = UIFactory.MakeButton(panel.transform, "GARAGE", UIFactory.Blue, () => gm.OpenGarage(), new Vector2(460, 120), 60);

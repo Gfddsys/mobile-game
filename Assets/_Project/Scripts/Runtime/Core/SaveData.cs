@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace TurtleBlaster
@@ -17,6 +18,14 @@ namespace TurtleBlaster
         public int totalRuns;
         public bool sfxOn = true;
         public bool musicOn = true;
+
+        // skins
+        public List<string> ownedSkins = new List<string> { SkinDatabase.DefaultId };
+        public string selectedSkin = SkinDatabase.DefaultId;
+
+        // leaderboard (on-device; see LocalLeaderboard)
+        public string playerName = "";
+        public List<LeaderboardEntry> leaderboard = new List<LeaderboardEntry>();
 
         public event Action Changed;
 
@@ -56,6 +65,34 @@ namespace TurtleBlaster
             return true;
         }
 
+        // ---------------- skins ----------------
+        public bool OwnsSkin(string id) => ownedSkins.Contains(id);
+
+        public void GrantSkin(string id)
+        {
+            if (!OwnsSkin(id)) ownedSkins.Add(id);
+        }
+
+        /// <summary>Buys a coin skin. Premium (real-money) skins go through Store.Buy instead.</summary>
+        public bool TryBuySkin(string id)
+        {
+            var skin = SkinDatabase.Get(id);
+            if (skin.id != id || skin.IsPremium || OwnsSkin(id) || coins < skin.coinPrice) return false;
+            coins -= skin.coinPrice;
+            GrantSkin(id);
+            selectedSkin = id;
+            Save();
+            return true;
+        }
+
+        public bool EquipSkin(string id)
+        {
+            if (!OwnsSkin(id)) return false;
+            selectedSkin = id;
+            Save();
+            return true;
+        }
+
         public void Save()
         {
             try
@@ -82,19 +119,30 @@ namespace TurtleBlaster
                             if (data.upgradeLevels != null) Array.Copy(data.upgradeLevels, fixedLevels, data.upgradeLevels.Length);
                             data.upgradeLevels = fixedLevels;
                         }
-                        return data;
+                        return Repair(data);
                     }
                 }
             }
             catch (Exception e) { Debug.LogWarning("Load failed, starting fresh: " + e.Message); }
-            return new SaveData();
+            return Repair(new SaveData());
+        }
+
+        /// <summary>Fills fields missing from older saves.</summary>
+        static SaveData Repair(SaveData d)
+        {
+            if (d.ownedSkins == null) d.ownedSkins = new List<string>();
+            if (!d.ownedSkins.Contains(SkinDatabase.DefaultId)) d.ownedSkins.Add(SkinDatabase.DefaultId);
+            if (string.IsNullOrEmpty(d.selectedSkin) || !d.ownedSkins.Contains(d.selectedSkin)) d.selectedSkin = SkinDatabase.DefaultId;
+            if (d.leaderboard == null) d.leaderboard = new List<LeaderboardEntry>();
+            if (string.IsNullOrEmpty(d.playerName)) d.playerName = "Turtle" + UnityEngine.Random.Range(1000, 10000);
+            return d;
         }
 
         /// <summary>Test helper / "reset progress" button.</summary>
         public static void ResetAll()
         {
             PlayerPrefs.DeleteKey(Key);
-            _current = new SaveData();
+            _current = Repair(new SaveData());
             _current.Changed?.Invoke();
         }
     }
@@ -114,5 +162,8 @@ namespace TurtleBlaster
         public string causeOfDeath = "";
         public bool newBestDistance;
         public bool newBestScore;
+        public int leaderboardRank;       // 0 = not in the top list
+        public bool revived;              // the "watch ad to revive" was used this run
+        public bool coinsDoubled;         // the "watch ad for x2 coins" was used this run
     }
 }

@@ -38,6 +38,8 @@ namespace TurtleBlaster
         public bool Thrusting { get; private set; }
         public Transform FocusTarget => ragdoll != null ? ragdoll.transform : transform;
         public Rigidbody2D Body => rb;
+        public bool Shielded => shieldTimer > 0f;
+        public string SkinId => skin != null ? skin.id : SkinDatabase.DefaultId;
 
         // Use the body's rotation (not the interpolated transform) for physics decisions.
         Vector2 Forward => Quaternion.Euler(0f, 0f, rb.rotation) * Vector2.right;
@@ -69,6 +71,8 @@ namespace TurtleBlaster
         float speedLogRemaining;       // pending speed change, as ln(factor), spread over a few physics steps
         Vector2 jumpDir; float jumpKickLeft;
         float hitInvulnTimer;
+        float shieldTimer;             // full invulnerability (after a revive)
+        SkinDef skin;
         float landingBoostTimer;       // after a Perfect Landing the cruise target stays raised for a while
         Vector2 normalSum; int normalCount;
         Vector2 groundNormal = Vector2.up;
@@ -151,7 +155,9 @@ namespace TurtleBlaster
             MakeSprite("WheelF", "wheel", wheelFront.offset, 11);
             string thrusterName = "thruster_" + Mathf.Clamp(save.GetLevel(UpgradeId.JetThruster), 0, 2);
             MakeSprite("Thruster", thrusterName, new Vector2(-1.18f, 0.3f), 9);
+            skin = SkinDatabase.Get(save.selectedSkin);
             var turtleGo = MakeSprite("TurtleSprite", "turtle", new Vector2(-0.02f, 0.72f), 12);
+            turtleGo.sprite = SpriteLibrary.GetTurtle(skin.id);
             turtleSr = turtleGo;
             turtleT = turtleGo.transform;
 
@@ -363,6 +369,7 @@ namespace TurtleBlaster
             // --- auto-cruise & terrain momentum ---
             if (landingBoostTimer > 0f) landingBoostTimer -= dt;
             if (hitInvulnTimer > 0f) hitInvulnTimer -= dt;
+            if (shieldTimer > 0f) shieldTimer -= dt;
             float boostFade = Mathf.Clamp01(landingBoostTimer / 1.0f);   // holds for most of the duration, then eases out
             float target = cfg.cruiseSpeed * cruiseMult * (SuperBoost ? cfg.superBoostSpeedMult : 1f) * (1f + cfg.perfectSpeedBoost * boostFade);
             if (grounded)
@@ -423,8 +430,10 @@ namespace TurtleBlaster
             // super boost flicker / hit flash
             if (hitFlash > 0f) hitFlash -= Time.deltaTime;
             Color c = Color.white;
+            if (skin != null && skin.rainbow) c = Color.HSVToRGB(Mathf.Repeat(Time.time * 0.35f, 1f), 0.35f, 1f);
             if (SuperBoost) c = Color.HSVToRGB(Mathf.Repeat(Time.time * 2f, 1f), 0.45f, 1f);
             if (hitFlash > 0f && ((int)(Time.time * 20f) & 1) == 0) c = new Color(1f, 0.4f, 0.4f);
+            if (shieldTimer > 0f && ((int)(Time.time * 12f) & 1) == 0) c.a = 0.35f;   // blink while shielded
             turtleSr.color = c;
             boardSr.color = c;
 
@@ -527,6 +536,8 @@ namespace TurtleBlaster
             else if (angle <= cfg.perfectAngle) grade = downhill ? LandingGrade.Perfect : LandingGrade.Clean;
             else grade = LandingGrade.Rough;
 
+            if (grade == LandingGrade.Fatal && shieldTimer > 0f) grade = LandingGrade.Rough;
+
             if (grade == LandingGrade.Fatal)
             {
                 Landed?.Invoke(grade, angle);
@@ -571,6 +582,7 @@ namespace TurtleBlaster
         void HitHazard(Hazard hz)
         {
             if (!Alive || hz == null) return;
+            if (shieldTimer > 0f) return;      // revive shield: nothing can hurt us
 
             if (hz.heavy) { Crash("Crushed by a boulder"); return; }
 
@@ -623,9 +635,18 @@ namespace TurtleBlaster
             SuperBoostChanged?.Invoke(false);
         }
 
+        /// <summary>Full invulnerability for a while (used after a revive). Obstacles, bad landings and body hits are ignored.</summary>
+        public void GrantShield(float seconds)
+        {
+            shieldTimer = Mathf.Max(shieldTimer, seconds);
+        }
+
+        public void SetFuel01(float f) => fuel = Mathf.Clamp01(f) * fuelCapacity;
+
         public void Crash(string cause)
         {
             if (!Alive) return;
+            if (shieldTimer > 0f && cause != "Fell off the world") return;
             Alive = false;
             Thrusting = false;
             AudioManager.Thrust(false);
@@ -641,7 +662,7 @@ namespace TurtleBlaster
             ragdoll.transform.position = turtleT.position;
             ragdoll.transform.rotation = transform.rotation;
             var sr = ragdoll.AddComponent<SpriteRenderer>();
-            sr.sprite = SpriteLibrary.Get("turtle");
+            sr.sprite = SpriteLibrary.GetTurtle(SkinId);
             sr.sortingOrder = 13;
             var rrb = ragdoll.AddComponent<Rigidbody2D>();
             rrb.gravityScale = cfg.gravityScale;

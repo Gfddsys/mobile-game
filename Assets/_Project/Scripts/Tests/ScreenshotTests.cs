@@ -40,6 +40,21 @@ namespace TurtleBlaster.Tests
             yield return new WaitForSeconds(0.3f);
             yield return Shot("2_garage");
 
+            gm.OpenSkins();
+            yield return new WaitForSeconds(0.3f);
+            yield return Shot("2b_skins");
+            gm.OpenShop();
+            yield return new WaitForSeconds(0.3f);
+            yield return Shot("2c_shop");
+            var lb = new LocalLeaderboard();
+            lb.Submit(new LeaderboardEntry { name = SaveData.Current.playerName, distance = 412, score = 1880, date = "2026-11-05" });
+            lb.Submit(new LeaderboardEntry { name = SaveData.Current.playerName, distance = 233, score = 940, date = "2026-11-04" });
+            gm.OpenLeaderboard();
+            yield return new WaitForSeconds(0.3f);
+            yield return Shot("2d_ranks");
+            gm.ShowMenu();
+            yield return new WaitForSeconds(0.5f);
+
             gm.StartRun(11);
             GameInput.UseOverride = true;
             float t = 0f;
@@ -55,9 +70,17 @@ namespace TurtleBlaster.Tests
             yield return new WaitForSecondsRealtime(0.9f);
             yield return Shot("5_crash");
             float guard = 0f;
+            while (gm.State != GameState.Reviving && gm.State != GameState.Summary && guard < 6f) { guard += Time.unscaledDeltaTime; yield return null; }
+            yield return new WaitForSecondsRealtime(0.3f);
+            yield return Shot("5b_revive");
+            if (gm.State == GameState.Reviving) gm.UI.ReviveChoose(false);
+            guard = 0f;
             while (gm.State != GameState.Summary && guard < 6f) { guard += Time.unscaledDeltaTime; yield return null; }
             yield return new WaitForSecondsRealtime(0.3f);
             yield return Shot("6_summary");
+            gm.WatchAdForDoubleCoins();   // opens the test-ad overlay
+            yield return new WaitForSecondsRealtime(0.5f);
+            yield return Shot("7_test_ad");
             Object.DestroyImmediate(gm.gameObject);
         }
     }
