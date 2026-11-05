@@ -15,7 +15,6 @@ namespace TurtleBlaster.EditorTools
     {
         const string ScenePath = "Assets/_Project/Scenes/Game.unity";
         const string ConfigPath = "Assets/_Project/Resources/GameConfig.asset";
-        const string PlaceholderDir = "Assets/_Project/Art/Placeholders";
 
         [MenuItem("Turtle Blaster/Setup/Run All (settings + config + scene)")]
         public static void RunAll()
@@ -94,33 +93,6 @@ namespace TurtleBlaster.EditorTools
             EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
             AssetDatabase.SaveAssets();
             Debug.Log("[TurtleBlaster] Created " + ScenePath);
-        }
-
-        [MenuItem("Turtle Blaster/Art/Export Placeholder Sprites to PNG")]
-        public static void ExportPlaceholderSprites()
-        {
-            Directory.CreateDirectory(PlaceholderDir);
-            foreach (var name in SpriteLibrary.Names)
-            {
-                var sprite = SpriteLibrary.Get(name);
-                var tex = sprite.texture;
-                string path = PlaceholderDir + "/" + name + ".png";
-                File.WriteAllBytes(path, tex.EncodeToPNG());
-                AssetDatabase.ImportAsset(path);
-                var importer = (TextureImporter)AssetImporter.GetAtPath(path);
-                if (importer != null)
-                {
-                    importer.textureType = TextureImporterType.Sprite;
-                    importer.spritePixelsPerUnit = sprite.pixelsPerUnit;
-                    importer.filterMode = FilterMode.Point;
-                    importer.textureCompression = TextureImporterCompression.Uncompressed;
-                    importer.mipmapEnabled = false;
-                    importer.SaveAndReimport();
-                }
-            }
-            AssetDatabase.Refresh();
-            Debug.Log("[TurtleBlaster] Exported placeholder sprites to " + PlaceholderDir +
-                      ". To replace one in the game, put your PNG in Assets/_Project/Resources/Sprites with the SAME file name.");
         }
 
         [MenuItem("Turtle Blaster/Debug/Reset Save Data")]

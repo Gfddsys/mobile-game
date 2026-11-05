@@ -118,14 +118,11 @@ SuperBoostChanged, Grinding, Crashed) แล้วจัดการคะแน
 - 7 สกิน (ฟรี 1, เหรียญ 5, เงินจริง 1), แพคเหรียญเงินจริง 3 ขนาด, ดูโฆษณา x2 เหรียญ, ดูโฆษณาชุบชีวิต, Leaderboard ระยะทาง
 - ตอนนี้ใช้บริการจำลอง (โฆษณา/ร้านค้าปลอม, ตารางคะแนนในเครื่อง) ซึ่งทำงานเฉพาะใน Editor/Development Build
 
-### เปลี่ยนงานภาพ
-ตอนนี้สไปรต์ทั้งหมดเป็น placeholder ที่วาดด้วยโค้ด (`Art/SpriteLibrary.cs`)
-1. เมนู **Turtle Blaster ▸ Art ▸ Export Placeholder Sprites to PNG** → ได้ PNG ที่ `Art/Placeholders/` (ขนาดและ PPU ถูกต้อง)
-2. ศิลปินวาดทับ แล้ววางไฟล์ **ชื่อเดียวกัน** ลง `Resources/Sprites/` → เกมใช้ไฟล์นั้นแทนอัตโนมัติ (ไม่ต้องแก้โค้ด)
-   ชื่อที่ใช้: `turtle, board, wheel, thruster_0..2, cone, pothole, sign, cable, boulder, rail, bird_0, bird_1, coin, part, cloud, hills_far, hills_near, sky, ui_*`
-3. สไปรต์ตั้ง Filter = Point, Compression = None, PPU = 16 (UI = 100)
-
-เสียงเหมือนกัน: วาง AudioClip ชื่อ `coin, part, perfect, rough, flip, boost, hit, crash, click, buy, deny, thrust, music_run` ใน `Resources/Audio/`
+### เปลี่ยนงานภาพ / เสียง
+ดู **[docs/ART_GUIDE.md](docs/ART_GUIDE.md)** — สรุปสั้นๆ:
+1. เมนู **Turtle Blaster ▸ Art ▸ 1. Export Placeholder Sprites** → ได้ภาพต้นแบบที่ `Art/Placeholders/`
+2. ก๊อปไฟล์ไป `Resources/Sprites/` วาดทับ เซฟชื่อเดิม (วางขนาดเดิมหรือ 2×, 4× ก็ได้ ขอให้สัดส่วนเท่าเดิม)
+3. Unity ตั้งค่า import, pivot และขนาดในเกมให้อัตโนมัติ — เช็กด้วย **Art ▸ 2. Validate Art Overrides**
 
 ### ย้ายไป New Input System / จอยเกมแพด
 แก้ที่ `Core/GameInput.cs` ไฟล์เดียว (ที่อื่นอ่านแค่ `GameInput.Up/Down/Left/Right`)

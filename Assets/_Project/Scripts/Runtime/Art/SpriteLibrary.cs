@@ -39,6 +39,33 @@ namespace TurtleBlaster
             }
         }
 
+        /// <summary>Every sprite name an artist can replace (Resources/Sprites/{name}.png), including skins.</summary>
+        public static IEnumerable<string> OverridableNames
+        {
+            get
+            {
+                foreach (var n in generators.Keys) yield return n;
+                foreach (var s in SkinDatabase.All)
+                    if (s.id != SkinDatabase.DefaultId) yield return "turtle_" + s.id;
+            }
+        }
+
+        /// <summary>
+        /// The built-in placeholder for a name, ignoring any artist override. Used by the editor
+        /// to export templates and to give imported art the same pivot / world size. Null if unknown.
+        /// </summary>
+        public static Sprite CreatePlaceholder(string name)
+        {
+            if (generators.TryGetValue(name, out var gen)) return gen();
+            if (name.StartsWith("turtle_"))
+            {
+                var id = name.Substring("turtle_".Length);
+                var skin = SkinDatabase.Get(id);
+                if (skin.id == id) return Turtle(skin);
+            }
+            return null;
+        }
+
         public static Sprite Get(string name)
         {
             if (cache.TryGetValue(name, out var s) && s != null) return s;
