@@ -24,6 +24,8 @@ namespace TurtleBlaster
 
         // menu widgets
         Text bestText, menuMissionText, menuWallet;
+        Text menuEnergyText, menuEnergyTimerText;
+        Button menuEnergyAdBtn;
         Button sfxBtn, musicBtn;
 
         // garage widgets
@@ -33,9 +35,15 @@ namespace TurtleBlaster
 
         // summary widgets
         Text summaryTitle, summaryBody;
+        Text summaryEnergyText, summaryEnergyTimerText;
+        Button summaryEnergyAdBtn;
         Image snapshotImg;
         Text snapshotCaption;
         Sprite snapshotSprite;
+
+        // pause widgets
+        Text pauseEnergyText;
+        Button pauseRestartBtn;
 
         public void Init(GameManager manager)
         {
@@ -106,7 +114,11 @@ namespace TurtleBlaster
         public void ShowPause(bool on)
         {
             pause.gameObject.SetActive(on);
-            if (on) GameInput.ClearTouch();
+            if (on)
+            {
+                GameInput.ClearTouch();
+                RefreshEnergyUI();
+            }
         }
 
         public void SetVisible(bool visible) { canvasGroup.alpha = visible ? 1f : 0f; }
@@ -137,6 +149,7 @@ namespace TurtleBlaster
         /// <summary>Updates the summary texts only (e.g. after the x2 coins ad).</summary>
         public void RefreshSummary(RunStats s)
         {
+            if (this == null || summaryTitle == null || summaryBody == null) return;
             summaryTitle.text = "WIPEOUT!\n<size=40><color=#ffd23f>" + s.causeOfDeath + "</color></size>";
             var sb = new StringBuilder();
             sb.AppendLine("Distance   <color=#ffd23f>" + Mathf.RoundToInt(s.distance) + " m</color>" + (s.newBestDistance ? "  <color=#4cd964>NEW BEST!</color>" : "") +
@@ -165,6 +178,7 @@ namespace TurtleBlaster
             if (musicBtn != null) UIFactory.SetButtonLabel(musicBtn, "MUSIC " + (s.musicOn ? "ON" : "OFF"));
             if (garage != null && garage.gameObject.activeSelf) RefreshGarage();
             RefreshExtrasWallet(w);
+            RefreshEnergyUI();
         }
 
         public void Popup(string text, Color color, int size = 64)
@@ -272,6 +286,11 @@ namespace TurtleBlaster
         {
             if (gm == null) return;
             UpdateExtras();
+            if (menu.gameObject.activeSelf || summary.gameObject.activeSelf || pause.gameObject.activeSelf ||
+                (energyOverlay != null && energyOverlay.gameObject.activeSelf))
+            {
+                RefreshEnergyUI();
+            }
             if (!hud.gameObject.activeSelf) return;
             var p = gm.Player;
             var s = gm.Stats;
@@ -348,6 +367,18 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)sfxBtn.transform, new Vector2(1, 1), new Vector2(-280, -110), new Vector2(230, 70));
             musicBtn = UIFactory.MakeButton(menu, "MUSIC ON", UIFactory.Panel, () => { var s = SaveData.Current; s.musicOn = !s.musicOn; s.Save(); }, new Vector2(230, 80), 32);
             UIFactory.Place((RectTransform)musicBtn.transform, new Vector2(1, 1), new Vector2(-30, -110), new Vector2(230, 70));
+
+            // energy panel (top left)
+            var eBox = UIFactory.PanelBox(menu, "EnergyBox", new Color(0.12f, 0.14f, 0.25f, 0.92f));
+            UIFactory.Place((RectTransform)eBox.transform, new Vector2(0, 1), new Vector2(36, -24), new Vector2(370, 152));
+            var eIcon = UIFactory.Image(eBox.transform, "EnergyIcon", SpriteLibrary.Get("energy"), Color.white);
+            UIFactory.Place((RectTransform)eIcon.transform, new Vector2(0, 1), new Vector2(18, -14), new Vector2(40, 52));
+            menuEnergyText = UIFactory.Label(eBox.transform, "ENERGY 5/5", 34, UIFactory.Accent, TextAnchor.MiddleLeft);
+            UIFactory.Place((RectTransform)menuEnergyText.transform, new Vector2(0, 1), new Vector2(68, -12), new Vector2(290, 44));
+            menuEnergyTimerText = UIFactory.Label(eBox.transform, "FULL", 24, new Color(0.8f, 0.9f, 1f), TextAnchor.MiddleLeft);
+            UIFactory.Place((RectTransform)menuEnergyTimerText.transform, new Vector2(0, 1), new Vector2(20, -58), new Vector2(330, 32));
+            menuEnergyAdBtn = UIFactory.MakeButton(eBox.transform, "+1 ENERGY (AD)", new Color(0.85f, 0.55f, 0.1f), () => gm.WatchAdForEnergy(), new Vector2(334, 48), 24);
+            UIFactory.Place((RectTransform)menuEnergyAdBtn.transform, new Vector2(0.5f, 0), new Vector2(0, 12), new Vector2(334, 48));
         }
 
         // =====================================================================
@@ -473,6 +504,19 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)summaryBody.transform, new Vector2(0, 0.5f), new Vector2(740, -45), new Vector2(840, 400), new Vector2(0, 0.5f));
 
             BuildSummaryExtras((RectTransform)panel.transform);
+
+            // energy box (top-right of summary panel)
+            var seBox = UIFactory.PanelBox(panel.transform, "SummaryEnergyBox", new Color(0.12f, 0.14f, 0.25f, 0.95f));
+            UIFactory.Place((RectTransform)seBox.transform, new Vector2(1, 1), new Vector2(-32, -24), new Vector2(380, 146));
+            var seIcon = UIFactory.Image(seBox.transform, "EnergyIcon", SpriteLibrary.Get("energy"), Color.white);
+            UIFactory.Place((RectTransform)seIcon.transform, new Vector2(0, 1), new Vector2(18, -14), new Vector2(38, 48));
+            summaryEnergyText = UIFactory.Label(seBox.transform, "ENERGY 5/5", 32, UIFactory.Accent, TextAnchor.MiddleLeft);
+            UIFactory.Place((RectTransform)summaryEnergyText.transform, new Vector2(0, 1), new Vector2(66, -12), new Vector2(300, 40));
+            summaryEnergyTimerText = UIFactory.Label(seBox.transform, "FULL", 22, new Color(0.8f, 0.9f, 1f), TextAnchor.MiddleLeft);
+            UIFactory.Place((RectTransform)summaryEnergyTimerText.transform, new Vector2(0, 1), new Vector2(20, -54), new Vector2(340, 30));
+            summaryEnergyAdBtn = UIFactory.MakeButton(seBox.transform, "+1 ENERGY (AD)", new Color(0.85f, 0.55f, 0.1f), () => gm.WatchAdForEnergy(), new Vector2(344, 46), 24);
+            UIFactory.Place((RectTransform)summaryEnergyAdBtn.transform, new Vector2(0.5f, 0), new Vector2(0, 12), new Vector2(344, 46));
+
             var retry = UIFactory.MakeButton(panel.transform, "RETRY", new Color(0.2f, 0.7f, 0.3f), () => gm.StartRun(), new Vector2(460, 120), 60);
             UIFactory.Place((RectTransform)retry.transform, new Vector2(0.5f, 0), new Vector2(-500, 36), new Vector2(460, 120));
             var gar = UIFactory.MakeButton(panel.transform, "GARAGE", UIFactory.Blue, () => gm.OpenGarage(), new Vector2(460, 120), 60);
@@ -490,12 +534,16 @@ namespace TurtleBlaster
             var bg = UIFactory.Image(pause, "Bg", SpriteLibrary.Get("square"), new Color(0, 0, 0, 0.6f));
             var brt = (RectTransform)bg.transform; brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one; brt.offsetMin = brt.offsetMax = Vector2.zero;
             bg.raycastTarget = true;
-            var t = UIFactory.Label(pause, "PAUSED", 120, Color.white);
-            UIFactory.Place((RectTransform)t.transform, new Vector2(0.5f, 0.72f), Vector2.zero, new Vector2(900, 150));
-            var resume = UIFactory.MakeButton(pause, "RESUME", new Color(0.2f, 0.7f, 0.3f), () => gm.Resume(), new Vector2(500, 130), 64);
-            UIFactory.Place((RectTransform)resume.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(500, 130));
-            var quit = UIFactory.MakeButton(pause, "QUIT RUN", new Color(0.8f, 0.3f, 0.3f), () => gm.QuitRun(), new Vector2(500, 110), 54);
-            UIFactory.Place((RectTransform)quit.transform, new Vector2(0.5f, 0.32f), Vector2.zero, new Vector2(500, 110));
+            var t = UIFactory.Label(pause, "PAUSED", 110, Color.white);
+            UIFactory.Place((RectTransform)t.transform, new Vector2(0.5f, 0.77f), Vector2.zero, new Vector2(900, 130));
+            pauseEnergyText = UIFactory.Label(pause, "ENERGY 5/5", 34, UIFactory.Accent);
+            UIFactory.Place((RectTransform)pauseEnergyText.transform, new Vector2(0.5f, 0.66f), Vector2.zero, new Vector2(700, 48));
+            var resume = UIFactory.MakeButton(pause, "RESUME", new Color(0.2f, 0.7f, 0.3f), () => gm.Resume(), new Vector2(500, 110), 56);
+            UIFactory.Place((RectTransform)resume.transform, new Vector2(0.5f, 0.53f), Vector2.zero, new Vector2(500, 110));
+            pauseRestartBtn = UIFactory.MakeButton(pause, "RESTART (-1 ENERGY)", UIFactory.Blue, () => gm.StartRun(), new Vector2(500, 100), 38);
+            UIFactory.Place((RectTransform)pauseRestartBtn.transform, new Vector2(0.5f, 0.38f), Vector2.zero, new Vector2(500, 100));
+            var quit = UIFactory.MakeButton(pause, "QUIT RUN", new Color(0.8f, 0.3f, 0.3f), () => gm.QuitRun(), new Vector2(500, 100), 50);
+            UIFactory.Place((RectTransform)quit.transform, new Vector2(0.5f, 0.23f), Vector2.zero, new Vector2(500, 100));
         }
     }
 }

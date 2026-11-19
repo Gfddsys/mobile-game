@@ -8,6 +8,10 @@ namespace TurtleBlaster.Tests
     /// <summary>Skins, store, leaderboard, revive and x2-coins flows (using the mock services).</summary>
     public class MonetizationTests
     {
+        IAdService prevAds;
+        ILeaderboardService prevLeaderboard;
+        INotificationService prevNotifications;
+
         [SetUp]
         public void SetUp()
         {
@@ -15,6 +19,12 @@ namespace TurtleBlaster.Tests
             PlayerPrefs.DeleteAll();
             SaveData.ResetAll();
             GameInput.ClearOverride(); GameInput.ClearTouch();
+            prevAds = Services.Ads;
+            prevLeaderboard = Services.Leaderboard;
+            prevNotifications = Services.Notifications;
+            Services.Ads = new MockAdService();
+            Services.Leaderboard = new LocalLeaderboard();
+            Services.Notifications = new FallbackNotificationService();
             MockAdService.AutoResult = true;
             MockPurchaseService.AutoResult = true;
         }
@@ -27,6 +37,9 @@ namespace TurtleBlaster.Tests
             MockPurchaseService.AutoResult = null;
             GameInput.ClearOverride();
             foreach (var gm in Object.FindObjectsByType<GameManager>(FindObjectsSortMode.None)) Object.DestroyImmediate(gm.gameObject);
+            Services.Ads = prevAds;
+            Services.Leaderboard = prevLeaderboard;
+            Services.Notifications = prevNotifications;
         }
 
         // ---------------- skins ----------------
@@ -208,6 +221,135 @@ namespace TurtleBlaster.Tests
             gm.StartRun(5);
             yield return null;
             Assert.AreEqual("ninja", gm.Player.SkinId);
+        }
+
+        // ---------------- energy & notifications ----------------
+
+        [Test]
+        public void Energy_RefillsOneEvery15MinutesAndCapsAtFive()
+        {
+            var save = SaveData.Current;
+            Assert.AreEqual(SaveData.MaxEnergy, save.energy);
+            Assert.AreEqual(5, SaveData.MaxEnergy);
+
+            var t0 = new System.DateTime(2026, 11, 19, 12, 0, 0, System.DateTimeKind.Utc);
+            Assert.IsTrue(save.TryConsumeEnergy(3, t0));
+            Assert.AreEqual(2, save.energy);
+
+            // Just before 15 minutes: still 2
+            save.RefreshEnergy(t0.AddMinutes(14).AddSeconds(59));
+            Assert.AreEqual(2, save.energy);
+
+            // At 15 minutes: +1 energy
+            save.RefreshEnergy(t0.AddMinutes(15));
+            Assert.AreEqual(3, save.energy);
+
+            // At 45 minutes total: all 3 missing energies refilled, capped at 5
+            save.RefreshEnergy(t0.AddMinutes(45));
+            Assert.AreEqual(5, save.energy);
+            Assert.AreEqual(0, save.energyNextRefillUtcTicks);
+            Assert.AreEqual(System.TimeSpan.Zero, save.GetTimeUntilFullEnergy(t0.AddMinutes(45)));
+        }
+
+        [UnityTest]
+        public IEnumerator Energy_ConsumesOnStartAndRestartAndBlocksAtZero()
+        {
+            var gm = new GameObject("GameManager").AddComponent<GameManager>();
+            yield return null;
+
+            Assert.AreEqual(5, SaveData.Current.energy);
+            Assert.IsTrue(gm.TryStartRun(5));
+            Assert.AreEqual(4, SaveData.Current.energy, "starting a run consumes 1 energy");
+
+            Assert.IsTrue(gm.TryStartRun(6));
+            Assert.AreEqual(3, SaveData.Current.energy, "restarting consumes 1 energy");
+
+            // Drain remaining 3 energies
+            Assert.IsTrue(gm.TryStartRun(7));
+            Assert.IsTrue(gm.TryStartRun(8));
+            Assert.IsTrue(gm.TryStartRun(9));
+            Assert.AreEqual(0, SaveData.Current.energy);
+
+            gm.ShowMenu();
+            yield return null;
+            Assert.IsFalse(gm.TryStartRun(10), "cannot start a run with 0 energy");
+            Assert.AreNotEqual(GameState.Playing, gm.State);
+        }
+
+        [UnityTest]
+        public IEnumerator Energy_InterstitialAdGrantsPlusOneUpToMax()
+        {
+            var gm = new GameObject("GameManager").AddComponent<GameManager>();
+            yield return null;
+
+            Assert.IsTrue(SaveData.Current.TryConsumeEnergy(2));
+            Assert.AreEqual(3, SaveData.Current.energy);
+
+            bool adDone = false, adOk = false;
+            gm.WatchAdForEnergy(ok => { adOk = ok; adDone = true; });
+            yield return WaitFor(() => adDone, 2f);
+            Assert.IsTrue(adOk);
+            Assert.AreEqual(4, SaveData.Current.energy, "interstitial ad adds +1 energy");
+
+            MockAdService.AutoResult = false;
+            adDone = false; adOk = true;
+            gm.WatchAdForEnergy(ok => { adOk = ok; adDone = true; });
+            yield return WaitFor(() => adDone, 2f);
+            Assert.IsFalse(adOk);
+            Assert.AreEqual(4, SaveData.Current.energy, "skipped ad grants no energy");
+
+            MockAdService.AutoResult = true;
+            adDone = false;
+            gm.WatchAdForEnergy(ok => { adDone = true; });
+            yield return WaitFor(() => adDone, 2f);
+            Assert.AreEqual(5, SaveData.Current.energy);
+
+            // Already at max (5/5): cannot exceed MaxEnergy
+            adDone = false; adOk = true;
+            gm.WatchAdForEnergy(ok => { adOk = ok; adDone = true; });
+            yield return WaitFor(() => adDone, 2f);
+            Assert.IsFalse(adOk);
+            Assert.AreEqual(5, SaveData.Current.energy);
+        }
+
+        [UnityTest]
+        public IEnumerator Energy_SchedulesAndCancelsFullNotification()
+        {
+            var notif = Services.Notifications as FallbackNotificationService;
+            Assert.IsNotNull(notif);
+
+            var gm = new GameObject("GameManager").AddComponent<GameManager>();
+            yield return null;
+            Assert.IsFalse(notif.IsScheduled, "no notification when energy starts full (5/5)");
+
+            // Start 1st run -> 4/5 -> full in ~15 minutes
+            Assert.IsTrue(gm.TryStartRun(5));
+            Assert.IsTrue(notif.IsScheduled);
+            Assert.AreEqual(5, notif.ScheduledMaxEnergy);
+            var firstFullUtc = notif.ScheduledFireTimeUtc;
+            double firstMinutes = (firstFullUtc - System.DateTime.UtcNow).TotalMinutes;
+            Assert.That(firstMinutes, Is.InRange(14.5, 15.1));
+
+            // Start 2nd run -> 3/5 -> full in ~30 minutes
+            Assert.IsTrue(gm.TryStartRun(6));
+            Assert.IsTrue(notif.IsScheduled);
+            double secondMinutes = (notif.ScheduledFireTimeUtc - System.DateTime.UtcNow).TotalMinutes;
+            Assert.That(secondMinutes, Is.InRange(29.5, 30.1));
+
+            // Watch interstitial ad (+1 energy -> 4/5) -> full moves 15m earlier (~15m)
+            bool done = false;
+            gm.WatchAdForEnergy(_ => done = true);
+            yield return WaitFor(() => done, 2f);
+            Assert.IsTrue(notif.IsScheduled);
+            double afterAdMinutes = (notif.ScheduledFireTimeUtc - System.DateTime.UtcNow).TotalMinutes;
+            Assert.That(afterAdMinutes, Is.InRange(14.5, 15.1));
+
+            // Watch interstitial ad again (+1 energy -> 5/5) -> notification cancelled
+            done = false;
+            gm.WatchAdForEnergy(_ => done = true);
+            yield return WaitFor(() => done, 2f);
+            Assert.AreEqual(5, SaveData.Current.energy);
+            Assert.IsFalse(notif.IsScheduled, "notification is cancelled once energy is full");
         }
     }
 }

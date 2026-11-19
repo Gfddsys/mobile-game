@@ -1,0 +1,26 @@
+{
+  "name": "TurtleBlaster.Notifications.Android",
+  "rootNamespace": "TurtleBlaster",
+  "references": [
+    "TurtleBlaster.Runtime",
+    "Unity.Notifications.Android"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "UNITY_ANDROID",
+    "UNITY_MOBILE_NOTIFICATIONS"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.unity.mobile.notifications",
+      "expression": "",
+      "define": "UNITY_MOBILE_NOTIFICATIONS"
+    }
+  ],
+  "noEngineReferences": false
+}

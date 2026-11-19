@@ -11,11 +11,11 @@ namespace TurtleBlaster
     /// </summary>
     public partial class UIRoot
     {
-        RectTransform skinsScreen, shopScreen, ranksScreen, reviveOverlay, adOverlay, purchaseOverlay;
+        RectTransform skinsScreen, shopScreen, ranksScreen, reviveOverlay, energyOverlay, adOverlay, purchaseOverlay;
         Text skinsWallet, shopWallet, shopNote, ranksRank, ranksName, ranksDist, ranksScore, ranksDate;
-        Text reviveTimerText, adCountdown, purchaseText;
+        Text reviveTimerText, energyOverlayTimerText, adTitle, adSub, adCountdown, purchaseText;
         Image reviveBar;
-        Button adClaimBtn, doubleCoinsBtn;
+        Button adClaimBtn, doubleCoinsBtn, energyOverlayAdBtn;
 
         class SkinCard { public SkinDef skin; public Image preview; public Text price; public Button button; }
         readonly List<SkinCard> skinCards = new List<SkinCard>();
@@ -25,10 +25,11 @@ namespace TurtleBlaster
         float reviveDuration, reviveLeft, adLeft;
         int overlayClosedFrame = -1;
 
-        /// <summary>A modal dialog (ad / purchase / revive) is open, or was closed this frame.</summary>
+        /// <summary>A modal dialog (ad / purchase / revive / energy) is open, or was closed this frame.</summary>
         public bool OverlayOpen =>
             adOverlay.gameObject.activeSelf || purchaseOverlay.gameObject.activeSelf ||
-            reviveOverlay.gameObject.activeSelf || overlayClosedFrame == Time.frameCount;
+            reviveOverlay.gameObject.activeSelf || energyOverlay.gameObject.activeSelf ||
+            overlayClosedFrame == Time.frameCount;
 
         void BuildExtras(Transform parent)
         {
@@ -37,6 +38,7 @@ namespace TurtleBlaster
             BuildRanks(parent);
             // overlays last so they draw on top of everything
             BuildRevive(parent);
+            BuildEnergyOverlay(parent);
             BuildAdOverlay(parent);
             BuildPurchaseOverlay(parent);
         }
@@ -46,6 +48,7 @@ namespace TurtleBlaster
             skinsScreen.gameObject.SetActive(false);
             shopScreen.gameObject.SetActive(false);
             ranksScreen.gameObject.SetActive(false);
+            if (energyOverlay != null) energyOverlay.gameObject.SetActive(false);
         }
 
         static RectTransform FullScreen(Transform parent, string name, Color dim)
@@ -359,6 +362,114 @@ namespace TurtleBlaster
             doubleCoinsBtn.gameObject.SetActive(can || s.coinsDoubled);
             doubleCoinsBtn.interactable = can;
             UIFactory.SetButtonLabel(doubleCoinsBtn, s.coinsDoubled ? "COINS DOUBLED!" : "WATCH AD: x2 COINS (+" + s.coins + ")");
+            RefreshEnergyUI();
+        }
+
+        // =====================================================================
+        // Energy overlay & live timers
+        // =====================================================================
+        void BuildEnergyOverlay(Transform parent)
+        {
+            energyOverlay = FullScreen(parent, "OutOfEnergy", new Color(0, 0, 0, 0.65f));
+            var panel = UIFactory.PanelBox(energyOverlay, "Panel", new Color(0.17f, 0.18f, 0.3f));
+            UIFactory.Place((RectTransform)panel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1020, 560));
+
+            var icon = UIFactory.Image(panel.transform, "Icon", SpriteLibrary.Get("energy"), Color.white);
+            UIFactory.Place((RectTransform)icon.transform, new Vector2(0.5f, 1), new Vector2(0, -34), new Vector2(60, 78), new Vector2(0.5f, 1));
+
+            var t = UIFactory.Label(panel.transform, "OUT OF ENERGY!", 84, UIFactory.Accent);
+            UIFactory.Place((RectTransform)t.transform, new Vector2(0.5f, 1), new Vector2(0, -118), new Vector2(960, 100), new Vector2(0.5f, 1));
+
+            var sub = UIFactory.Label(panel.transform, "Each run costs 1 energy.\nRefills 1 every 15 minutes (max 5).", 32, Color.white);
+            UIFactory.Place((RectTransform)sub.transform, new Vector2(0.5f, 1), new Vector2(0, -230), new Vector2(940, 86), new Vector2(0.5f, 1));
+
+            energyOverlayTimerText = UIFactory.Label(panel.transform, "", 30, new Color(0.75f, 0.9f, 1f));
+            UIFactory.Place((RectTransform)energyOverlayTimerText.transform, new Vector2(0.5f, 1), new Vector2(0, -330), new Vector2(940, 44), new Vector2(0.5f, 1));
+
+            energyOverlayAdBtn = UIFactory.MakeButton(panel.transform, "WATCH AD (+1 ENERGY)", new Color(0.85f, 0.55f, 0.1f), () =>
+            {
+                gm.WatchAdForEnergy(ok =>
+                {
+                    if (ok && SaveData.Current.energy > 0) HideOutOfEnergy();
+                });
+            }, new Vector2(520, 108), 36);
+            UIFactory.Place((RectTransform)energyOverlayAdBtn.transform, new Vector2(0.5f, 0), new Vector2(-175, 42), new Vector2(520, 108));
+
+            var close = UIFactory.MakeButton(panel.transform, "CLOSE", UIFactory.Panel, HideOutOfEnergy, new Vector2(290, 108), 40);
+            UIFactory.Place((RectTransform)close.transform, new Vector2(0.5f, 0), new Vector2(265, 42), new Vector2(290, 108));
+
+            energyOverlay.gameObject.SetActive(false);
+        }
+
+        public void ShowOutOfEnergy()
+        {
+            if (energyOverlay == null) return;
+            RefreshEnergyUI();
+            energyOverlay.SetAsLastSibling();
+            energyOverlay.gameObject.SetActive(true);
+        }
+
+        public void HideOutOfEnergy()
+        {
+            if (energyOverlay == null || !energyOverlay.gameObject.activeSelf) return;
+            energyOverlay.gameObject.SetActive(false);
+            overlayClosedFrame = Time.frameCount;
+        }
+
+        static string FormatCountdown(TimeSpan ts)
+        {
+            if (ts <= TimeSpan.Zero) return "00:00";
+            int totalSec = Mathf.CeilToInt((float)ts.TotalSeconds);
+            int mins = totalSec / 60;
+            int secs = totalSec % 60;
+            return mins.ToString("00") + ":" + secs.ToString("00");
+        }
+
+        public void RefreshEnergyUI()
+        {
+            var save = SaveData.Current;
+            int e = save.energy;
+            bool full = e >= SaveData.MaxEnergy;
+            bool canAd = gm != null && gm.CanWatchEnergyAd;
+            string energyStr = "ENERGY " + e + "/" + SaveData.MaxEnergy;
+            string nextStr = full ? "FULL" : "Next +1 in " + FormatCountdown(save.GetTimeUntilNextEnergy());
+            string fullStr = full ? "FULL" : "Full in " + FormatCountdown(save.GetTimeUntilFullEnergy());
+            Color timerCol = e == 0 ? UIFactory.Bad : (full ? UIFactory.Good : new Color(0.8f, 0.9f, 1f));
+            string adLabel = full ? "ENERGY FULL" : (Services.Ads.IsInterstitialReady ? "+1 ENERGY (AD)" : "AD LOADING...");
+            Color adCol = canAd ? new Color(0.85f, 0.55f, 0.1f) : new Color(0.35f, 0.35f, 0.45f);
+
+            if (menuEnergyText != null) menuEnergyText.text = energyStr;
+            if (menuEnergyTimerText != null) { menuEnergyTimerText.text = nextStr; menuEnergyTimerText.color = timerCol; }
+            if (menuEnergyAdBtn != null)
+            {
+                menuEnergyAdBtn.interactable = canAd;
+                menuEnergyAdBtn.targetGraphic.color = adCol;
+                UIFactory.SetButtonLabel(menuEnergyAdBtn, adLabel);
+            }
+
+            if (summaryEnergyText != null) summaryEnergyText.text = energyStr;
+            if (summaryEnergyTimerText != null) { summaryEnergyTimerText.text = nextStr; summaryEnergyTimerText.color = timerCol; }
+            if (summaryEnergyAdBtn != null)
+            {
+                summaryEnergyAdBtn.interactable = canAd;
+                summaryEnergyAdBtn.targetGraphic.color = adCol;
+                UIFactory.SetButtonLabel(summaryEnergyAdBtn, adLabel);
+            }
+
+            if (pauseEnergyText != null)
+            {
+                pauseEnergyText.text = energyStr + (full ? "  (FULL)" : "  -  " + nextStr);
+                pauseEnergyText.color = e == 0 ? UIFactory.Bad : UIFactory.Accent;
+            }
+
+            if (energyOverlayTimerText != null)
+                energyOverlayTimerText.text = full ? "ENERGY FULL!" : (nextStr + "   |   " + fullStr);
+            if (energyOverlayAdBtn != null)
+            {
+                energyOverlayAdBtn.interactable = canAd;
+                energyOverlayAdBtn.targetGraphic.color = adCol;
+                UIFactory.SetButtonLabel(energyOverlayAdBtn, Services.Ads.IsInterstitialReady ? "WATCH AD (+1 ENERGY)" : "AD NOT READY YET");
+            }
         }
 
         // =====================================================================
@@ -404,30 +515,35 @@ namespace TurtleBlaster
         }
 
         // =====================================================================
-        // Test-mode rewarded ad & purchase dialogs (Mock services)
+        // Test-mode rewarded & interstitial ad + purchase dialogs (Mock services)
         // =====================================================================
         void BuildAdOverlay(Transform parent)
         {
             adOverlay = FullScreen(parent, "MockAd", new Color(0.02f, 0.02f, 0.05f, 0.96f));
-            var t = UIFactory.Label(adOverlay, "TEST AD", 140, Color.white);
-            UIFactory.Place((RectTransform)t.transform, new Vector2(0.5f, 0.68f), Vector2.zero, new Vector2(1200, 170));
-            var sub = UIFactory.Label(adOverlay, "Rewarded ad placeholder - replace MockAdService with a real ad SDK", 34, new Color(0.8f, 0.85f, 1f));
-            UIFactory.Place((RectTransform)sub.transform, new Vector2(0.5f, 0.55f), Vector2.zero, new Vector2(1600, 50));
+            adTitle = UIFactory.Label(adOverlay, "TEST AD", 120, Color.white);
+            UIFactory.Place((RectTransform)adTitle.transform, new Vector2(0.5f, 0.68f), Vector2.zero, new Vector2(1500, 170));
+            adSub = UIFactory.Label(adOverlay, "Ad placeholder - replace MockAdService with a real ad SDK", 34, new Color(0.8f, 0.85f, 1f));
+            UIFactory.Place((RectTransform)adSub.transform, new Vector2(0.5f, 0.55f), Vector2.zero, new Vector2(1600, 50));
             adCountdown = UIFactory.Label(adOverlay, "", 56, UIFactory.Accent);
             UIFactory.Place((RectTransform)adCountdown.transform, new Vector2(0.5f, 0.42f), Vector2.zero, new Vector2(1200, 80));
 
-            adClaimBtn = UIFactory.MakeButton(adOverlay, "CLAIM REWARD", new Color(0.2f, 0.7f, 0.3f), () => CloseAd(true), new Vector2(520, 120), 52);
-            UIFactory.Place((RectTransform)adClaimBtn.transform, new Vector2(0.5f, 0.2f), Vector2.zero, new Vector2(520, 120));
+            adClaimBtn = UIFactory.MakeButton(adOverlay, "CLAIM REWARD", new Color(0.2f, 0.7f, 0.3f), () => CloseAd(true), new Vector2(540, 120), 48);
+            UIFactory.Place((RectTransform)adClaimBtn.transform, new Vector2(0.5f, 0.2f), Vector2.zero, new Vector2(540, 120));
             var skip = UIFactory.MakeButton(adOverlay, "SKIP (no reward)", UIFactory.Panel, () => CloseAd(false), new Vector2(360, 70), 28);
             UIFactory.Place((RectTransform)skip.transform, new Vector2(1, 1), new Vector2(-40, -40), new Vector2(360, 70));
             adOverlay.gameObject.SetActive(false);
         }
 
-        public void ShowMockAd(string placement, Action<bool> onComplete)
+        public void ShowMockAd(string placement, Action<bool> onComplete, bool isInterstitial = false)
         {
             adCallback = onComplete;
             adLeft = 3f;
             adClaimBtn.interactable = false;
+            if (adTitle != null) adTitle.text = isInterstitial ? "TEST INTERSTITIAL AD" : "TEST REWARDED AD";
+            if (adSub != null) adSub.text = isInterstitial
+                ? "Interstitial ad placeholder - replace MockAdService with a real ad SDK"
+                : "Rewarded ad placeholder - replace MockAdService with a real ad SDK";
+            UIFactory.SetButtonLabel(adClaimBtn, isInterstitial ? "CONTINUE (+1 ENERGY)" : "CLAIM REWARD");
             adOverlay.SetAsLastSibling();
             adOverlay.gameObject.SetActive(true);
         }

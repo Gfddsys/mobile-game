@@ -18,6 +18,7 @@ namespace TurtleBlaster
         public static IAdService Ads = new MockAdService();
         public static IPurchaseService Purchases = new MockPurchaseService();
         public static ILeaderboardService Leaderboard = new UgsLeaderboardService("High_Scores");
+        public static INotificationService Notifications = new FallbackNotificationService();
 
         /// <summary>True where test/mock behaviour is allowed (Editor or Development Build).</summary>
         public static bool MockAllowed => Application.isEditor || Debug.isDebugBuild;
@@ -31,6 +32,10 @@ namespace TurtleBlaster
         bool IsRewardedReady { get; }
         /// <summary>Show a rewarded ad. onComplete(true) only if the player watched it to the end.</summary>
         void ShowRewarded(string placement, Action<bool> onComplete);
+        /// <summary>Is an interstitial ad available to show right now?</summary>
+        bool IsInterstitialReady { get; }
+        /// <summary>Show an interstitial ad. onComplete(true) when displayed/closed cleanly.</summary>
+        void ShowInterstitial(string placement, Action<bool> onComplete);
     }
 
     /// <summary>Fake ad: a 3 second "TEST AD" overlay. Editor / Development builds only.</summary>
@@ -40,12 +45,20 @@ namespace TurtleBlaster
         public static bool? AutoResult;
 
         public bool IsRewardedReady => AutoResult.HasValue || Services.MockAllowed;
+        public bool IsInterstitialReady => AutoResult.HasValue || Services.MockAllowed;
 
         public void ShowRewarded(string placement, Action<bool> onComplete)
         {
             if (AutoResult.HasValue) { onComplete?.Invoke(AutoResult.Value); return; }
             if (!Services.MockAllowed || GameManager.Instance == null) { onComplete?.Invoke(false); return; }
-            GameManager.Instance.UI.ShowMockAd(placement, onComplete);
+            GameManager.Instance.UI.ShowMockAd(placement, onComplete, false);
+        }
+
+        public void ShowInterstitial(string placement, Action<bool> onComplete)
+        {
+            if (AutoResult.HasValue) { onComplete?.Invoke(AutoResult.Value); return; }
+            if (!Services.MockAllowed || GameManager.Instance == null) { onComplete?.Invoke(false); return; }
+            GameManager.Instance.UI.ShowMockAd(placement, onComplete, true);
         }
     }
 
@@ -187,6 +200,55 @@ namespace TurtleBlaster
         {
             var list = SaveData.Current.leaderboard;
             onResult?.Invoke(list.GetRange(0, Mathf.Min(count, list.Count)));
+        }
+    }
+
+    // ------------------------------------------------------------------ notifications
+
+    public interface INotificationService
+    {
+        void Initialize();
+        void ScheduleEnergyFull(DateTime fireTimeUtc, int maxEnergy);
+        void CancelEnergyFull();
+    }
+
+    /// <summary>
+    /// Tracks scheduled full-energy notification state when com.unity.mobile.notifications is not
+    /// installed (or on non-mobile platforms / tests). Platform adapters override Services.Notifications
+    /// automatically when com.unity.mobile.notifications is installed on Android or iOS.
+    /// </summary>
+    public class FallbackNotificationService : INotificationService
+    {
+        public bool IsScheduled { get; private set; }
+        public DateTime ScheduledFireTimeUtc { get; private set; }
+        public int ScheduledMaxEnergy { get; private set; }
+
+        bool initialized;
+
+        public void Initialize()
+        {
+            if (initialized) return;
+            initialized = true;
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR && !UNITY_MOBILE_NOTIFICATIONS
+            Debug.Log("[Notifications] Install com.unity.mobile.notifications via Package Manager for OS-level background notifications.");
+#endif
+        }
+
+        public void ScheduleEnergyFull(DateTime fireTimeUtc, int maxEnergy)
+        {
+            Initialize();
+            IsScheduled = true;
+            ScheduledFireTimeUtc = fireTimeUtc;
+            ScheduledMaxEnergy = maxEnergy;
+            Debug.Log("[Notifications] Scheduled 'Energy Full (" + maxEnergy + "/" + maxEnergy + ")' for " + fireTimeUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss"));
+        }
+
+        public void CancelEnergyFull()
+        {
+            if (!IsScheduled) return;
+            IsScheduled = false;
+            ScheduledFireTimeUtc = default;
+            Debug.Log("[Notifications] Cancelled energy full notification.");
         }
     }
 }

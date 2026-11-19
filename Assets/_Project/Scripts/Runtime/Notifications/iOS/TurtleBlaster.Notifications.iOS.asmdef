@@ -1,0 +1,26 @@
+{
+  "name": "TurtleBlaster.Notifications.iOS",
+  "rootNamespace": "TurtleBlaster",
+  "references": [
+    "TurtleBlaster.Runtime",
+    "Unity.Notifications.iOS"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "UNITY_IOS",
+    "UNITY_MOBILE_NOTIFICATIONS"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.unity.mobile.notifications",
+      "expression": "",
+      "define": "UNITY_MOBILE_NOTIFICATIONS"
+    }
+  ],
+  "noEngineReferences": false
+}

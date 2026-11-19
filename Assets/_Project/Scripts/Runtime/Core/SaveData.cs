@@ -36,6 +36,8 @@ namespace TurtleBlaster
     public class SaveData
     {
         const string Key = "turtleblaster.save.v1";
+        public const int MaxEnergy = 5;
+        public const int EnergyRefillSeconds = 15 * 60;
 
         public int coins;
         public int parts;
@@ -44,6 +46,9 @@ namespace TurtleBlaster
         public int bestScore;
         public int totalRuns;
         public int missionIndex;
+        public int energy = MaxEnergy;
+        public bool energyInitialized;
+        public long energyNextRefillUtcTicks;
         public bool sfxOn = true;
         public bool musicOn = true;
 
@@ -113,6 +118,90 @@ namespace TurtleBlaster
             coins += m.rewardCoins;
             missionIndex++;
             Save();
+        }
+
+        // ---------------- energy ----------------
+        public bool RefreshEnergy(DateTime? nowUtc = null)
+        {
+            DateTime now = nowUtc ?? DateTime.UtcNow;
+            if (energy >= MaxEnergy)
+            {
+                if (energyNextRefillUtcTicks != 0)
+                {
+                    energyNextRefillUtcTicks = 0;
+                    Save();
+                    return true;
+                }
+                return false;
+            }
+
+            long intervalTicks = TimeSpan.FromSeconds(EnergyRefillSeconds).Ticks;
+            if (energyNextRefillUtcTicks <= 0)
+            {
+                energyNextRefillUtcTicks = now.Ticks + intervalTicks;
+                Save();
+                return true;
+            }
+
+            // Guard against device clock moving backwards
+            if (energyNextRefillUtcTicks > now.Ticks + intervalTicks)
+            {
+                energyNextRefillUtcTicks = now.Ticks + intervalTicks;
+                Save();
+                return true;
+            }
+
+            if (now.Ticks < energyNextRefillUtcTicks) return false;
+
+            int gained = 1 + (int)((now.Ticks - energyNextRefillUtcTicks) / intervalTicks);
+            energy = Mathf.Min(MaxEnergy, energy + gained);
+            if (energy >= MaxEnergy) energyNextRefillUtcTicks = 0;
+            else energyNextRefillUtcTicks += gained * intervalTicks;
+            Save();
+            return true;
+        }
+
+        public bool TryConsumeEnergy(int amount = 1, DateTime? nowUtc = null)
+        {
+            DateTime now = nowUtc ?? DateTime.UtcNow;
+            RefreshEnergy(now);
+            if (amount <= 0) return true;
+            if (energy < amount) return false;
+
+            bool wasFull = energy >= MaxEnergy;
+            energy -= amount;
+            if (wasFull && energy < MaxEnergy)
+                energyNextRefillUtcTicks = now.Ticks + TimeSpan.FromSeconds(EnergyRefillSeconds).Ticks;
+            Save();
+            return true;
+        }
+
+        public bool AddEnergy(int amount = 1, DateTime? nowUtc = null)
+        {
+            DateTime now = nowUtc ?? DateTime.UtcNow;
+            RefreshEnergy(now);
+            if (amount <= 0 || energy >= MaxEnergy) return false;
+
+            energy = Mathf.Min(MaxEnergy, energy + amount);
+            if (energy >= MaxEnergy) energyNextRefillUtcTicks = 0;
+            Save();
+            return true;
+        }
+
+        public TimeSpan GetTimeUntilNextEnergy(DateTime? nowUtc = null)
+        {
+            DateTime now = nowUtc ?? DateTime.UtcNow;
+            if (energy >= MaxEnergy || energyNextRefillUtcTicks <= 0) return TimeSpan.Zero;
+            long rem = energyNextRefillUtcTicks - now.Ticks;
+            return rem > 0 ? TimeSpan.FromTicks(rem) : TimeSpan.Zero;
+        }
+
+        public TimeSpan GetTimeUntilFullEnergy(DateTime? nowUtc = null)
+        {
+            DateTime now = nowUtc ?? DateTime.UtcNow;
+            if (energy >= MaxEnergy) return TimeSpan.Zero;
+            int remainingAfterNext = Mathf.Max(0, MaxEnergy - energy - 1);
+            return GetTimeUntilNextEnergy(now) + TimeSpan.FromSeconds(remainingAfterNext * EnergyRefillSeconds);
         }
 
         public int GetLevel(UpgradeId id) => upgradeLevels[(int)id];
@@ -210,6 +299,15 @@ namespace TurtleBlaster
             if (string.IsNullOrEmpty(d.selectedSkin) || !d.ownedSkins.Contains(d.selectedSkin)) d.selectedSkin = SkinDatabase.DefaultId;
             if (d.leaderboard == null) d.leaderboard = new List<LeaderboardEntry>();
             if (string.IsNullOrEmpty(d.playerName)) d.playerName = "Turtle" + UnityEngine.Random.Range(1000, 10000);
+            if (!d.energyInitialized)
+            {
+                d.energy = MaxEnergy;
+                d.energyInitialized = true;
+                d.energyNextRefillUtcTicks = 0;
+            }
+            d.energy = Mathf.Clamp(d.energy, 0, MaxEnergy);
+            if (d.energy >= MaxEnergy) d.energyNextRefillUtcTicks = 0;
+            else if (d.energyNextRefillUtcTicks <= 0) d.energyNextRefillUtcTicks = DateTime.UtcNow.AddSeconds(EnergyRefillSeconds).Ticks;
             return d;
         }
 

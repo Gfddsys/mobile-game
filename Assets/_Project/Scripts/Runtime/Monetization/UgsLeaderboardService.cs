@@ -93,57 +93,55 @@ namespace TurtleBlaster
 
         private async void SubmitOnline(LeaderboardEntry entry, Action<int> onRank, int localRank)
         {
+            int rankToReport = localRank;
             try
             {
                 bool signedIn = await EnsureSignedInAsync();
-                if (!signedIn)
+                if (signedIn)
                 {
-                    onRank?.Invoke(localRank);
-                    return;
-                }
-
-                // Try updating player name on auth service so UGS displays the name
-                if (!string.IsNullOrWhiteSpace(entry.name))
-                {
-                    try
+                    // Try updating player name on auth service so UGS displays the name
+                    if (!string.IsNullOrWhiteSpace(entry.name))
                     {
-                        string sanitized = System.Text.RegularExpressions.Regex.Replace(entry.name.Trim(), @"[^\w]", "_");
-                        if (sanitized.Length > 50) sanitized = sanitized.Substring(0, 50);
-                        if (sanitized.Length >= 3 && AuthenticationService.Instance.PlayerName != sanitized)
+                        try
                         {
-                            await AuthenticationService.Instance.UpdatePlayerNameAsync(sanitized);
+                            string sanitized = System.Text.RegularExpressions.Regex.Replace(entry.name.Trim(), @"[^\w]", "_");
+                            if (sanitized.Length > 50) sanitized = sanitized.Substring(0, 50);
+                            if (sanitized.Length >= 3 && AuthenticationService.Instance.PlayerName != sanitized)
+                            {
+                                await AuthenticationService.Instance.UpdatePlayerNameAsync(sanitized);
+                            }
+                        }
+                        catch
+                        {
+                            // Some names or characters may be rejected by auth validation; metadata will still preserve it
                         }
                     }
-                    catch
+
+                    var meta = new EntryMetadata
                     {
-                        // Some names or characters may be rejected by auth validation; metadata will still preserve it
-                    }
+                        name = entry.name,
+                        score = entry.score,
+                        date = entry.date
+                    };
+
+                    var options = new AddPlayerScoreOptions
+                    {
+                        Metadata = meta
+                    };
+
+                    // In Turtle Blaster, the primary competitive score is distance
+                    var res = await LeaderboardsService.Instance.AddPlayerScoreAsync(LeaderboardId, entry.distance, options);
+                    rankToReport = res.Rank + 1; // UGS rank is 0-indexed, game UI uses 1-indexed
+
+                    Debug.Log($"[UgsLeaderboard] Score submitted to '{LeaderboardId}': {entry.distance} m (Rank #{rankToReport})");
                 }
-
-                var meta = new EntryMetadata
-                {
-                    name = entry.name,
-                    score = entry.score,
-                    date = entry.date
-                };
-
-                var options = new AddPlayerScoreOptions
-                {
-                    Metadata = meta
-                };
-
-                // In Turtle Blaster, the primary competitive score is distance
-                var res = await LeaderboardsService.Instance.AddPlayerScoreAsync(LeaderboardId, entry.distance, options);
-                int onlineRank = res.Rank + 1; // UGS rank is 0-indexed, game UI uses 1-indexed
-
-                Debug.Log($"[UgsLeaderboard] Score submitted to '{LeaderboardId}': {entry.distance} m (Rank #{onlineRank})");
-                onRank?.Invoke(onlineRank);
             }
             catch (Exception ex)
             {
                 Debug.LogWarning($"[UgsLeaderboard] Submit failed, using local rank #{localRank}: {ex.Message}");
-                onRank?.Invoke(localRank);
             }
+
+            onRank?.Invoke(rankToReport);
         }
 
         public void GetTop(int count, Action<IList<LeaderboardEntry>> onResult)

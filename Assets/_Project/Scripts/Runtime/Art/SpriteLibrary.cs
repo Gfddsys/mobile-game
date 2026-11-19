@@ -341,6 +341,8 @@ namespace TurtleBlaster
                 return c.ToSprite(16f);
             };
 
+            g["energy"] = EnergyIcon;
+
             g["cloud"] = () =>
             {
                 var c = new PixelCanvas(40, 14);
@@ -456,6 +458,16 @@ namespace TurtleBlaster
             };
             tex.LoadImage(Convert.FromBase64String(b64));
             return Sprite.Create(tex, new Rect(0, 0, tex.width, tex.height), new Vector2(0.5f, 0.5f), 16f, 0, SpriteMeshType.FullRect);
+        }
+
+        static Sprite EnergyIcon()
+        {
+            var c = new PixelCanvas(12, 16);
+            c.Triangle(new Vector2(7, 14), new Vector2(2, 7), new Vector2(7, 7), Yellow);
+            c.Triangle(new Vector2(5, 9), new Vector2(10, 9), new Vector2(4, 1), Orange);
+            c.Rect(4, 7, 4, 2, White);
+            c.Outline(K);
+            return c.ToSprite(16f);
         }
 
         static Sprite Bird(bool wingsUp)

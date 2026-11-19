@@ -153,6 +153,26 @@ namespace TurtleBlaster.EditorTools
             Debug.Log("[TurtleBlaster] Added currency.");
         }
 
+        [MenuItem("Turtle Blaster/Debug/Refill Energy (5/5)")]
+        public static void RefillEnergy()
+        {
+            var s = SaveData.Current;
+            s.energy = SaveData.MaxEnergy;
+            s.energyNextRefillUtcTicks = 0;
+            s.Save();
+            if (GameManager.Instance != null) GameManager.Instance.SyncEnergyNotification();
+            Debug.Log("[TurtleBlaster] Energy refilled to 5/5.");
+        }
+
+        [MenuItem("Turtle Blaster/Debug/Drain Energy (0/5)")]
+        public static void DrainEnergy()
+        {
+            var s = SaveData.Current;
+            s.TryConsumeEnergy(s.energy);
+            if (GameManager.Instance != null) GameManager.Instance.SyncEnergyNotification();
+            Debug.Log("[TurtleBlaster] Energy drained to 0/5.");
+        }
+
         [MenuItem("Turtle Blaster/Build/Android APK")]
         public static void BuildAndroid()
         {

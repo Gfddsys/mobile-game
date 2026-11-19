@@ -35,6 +35,7 @@ namespace TurtleBlaster
         float grindScore;
         float startX;
         float menuResetTimer;
+        float energyCheckTimer;
         Texture2D snapshot;
         Coroutine dyingRoutine;
         readonly System.Collections.Generic.List<GameObject> owned = new System.Collections.Generic.List<GameObject>();
@@ -88,6 +89,10 @@ namespace TurtleBlaster
             UI = new GameObject("UIRoot").AddComponent<UIRoot>();
             UI.transform.SetParent(transform, false);
             UI.Init(this);
+
+            Services.Notifications.Initialize();
+            SaveData.Current.RefreshEnergy();
+            SyncEnergyNotification();
         }
 
         void Start()
@@ -114,10 +119,39 @@ namespace TurtleBlaster
         void OnApplicationPause(bool paused)
         {
             if (paused && State == GameState.Playing) Pause();
+            if (paused)
+            {
+                SaveData.Current.RefreshEnergy();
+                SyncEnergyNotification();
+            }
+            else
+            {
+                CheckEnergyRefill(true);
+            }
+        }
+
+        void OnApplicationFocus(bool hasFocus)
+        {
+            if (!hasFocus)
+            {
+                SaveData.Current.RefreshEnergy();
+                SyncEnergyNotification();
+            }
+            else
+            {
+                CheckEnergyRefill(true);
+            }
         }
 
         void Update()
         {
+            energyCheckTimer += Time.unscaledDeltaTime;
+            if (energyCheckTimer >= 0.5f)
+            {
+                energyCheckTimer = 0f;
+                CheckEnergyRefill(true);
+            }
+
             if (Player != null && World != null)
             {
                 World.UpdateAround(Cam.transform.position.x);
@@ -184,8 +218,43 @@ namespace TurtleBlaster
             GameInput.ClearOverride();
         }
 
-        public void StartRun(int seed = -1)
+        void CheckEnergyRefill(bool showFullPopup)
         {
+            var save = SaveData.Current;
+            int before = save.energy;
+            if (save.RefreshEnergy())
+            {
+                SyncEnergyNotification();
+                if (showFullPopup && before < SaveData.MaxEnergy && save.energy >= SaveData.MaxEnergy && UI != null)
+                {
+                    UI.Popup("ENERGY FULL! (" + SaveData.MaxEnergy + "/" + SaveData.MaxEnergy + ")", UIFactory.Good, 68);
+                    AudioManager.Sfx("perfect");
+                }
+            }
+        }
+
+        public void SyncEnergyNotification()
+        {
+            var save = SaveData.Current;
+            if (save.energy >= SaveData.MaxEnergy)
+                Services.Notifications.CancelEnergyFull();
+            else
+                Services.Notifications.ScheduleEnergyFull(System.DateTime.UtcNow + save.GetTimeUntilFullEnergy(), SaveData.MaxEnergy);
+        }
+
+        public void StartRun(int seed = -1) => TryStartRun(seed);
+
+        public bool TryStartRun(int seed = -1)
+        {
+            SaveData.Current.RefreshEnergy();
+            if (!SaveData.Current.TryConsumeEnergy(1))
+            {
+                AudioManager.Sfx("deny");
+                if (UI != null) UI.ShowOutOfEnergy();
+                return false;
+            }
+            SyncEnergyNotification();
+
             Time.timeScale = 1f;
             StopDying();
             SpawnPlayer(seed >= 0 ? seed : Random.Range(0, 1000000));
@@ -196,6 +265,7 @@ namespace TurtleBlaster
             UI.ShowHud();
             AudioManager.StartMusic();
             UI.Popup("GO!", UIFactory.Accent, 90);
+            return true;
         }
 
         void SpawnPlayer(int seed)
@@ -461,6 +531,45 @@ namespace TurtleBlaster
 
         public bool CanDoubleCoins => State == GameState.Summary && !Stats.coinsDoubled && Stats.coins > 0 && Services.Ads.IsRewardedReady;
 
+        public bool CanWatchEnergyAd => SaveData.Current.energy < SaveData.MaxEnergy && Services.Ads.IsInterstitialReady;
+
+        /// <summary>Watches an interstitial ad to refill +1 energy (up to MaxEnergy = 5).</summary>
+        public void WatchAdForEnergy(System.Action<bool> onComplete = null)
+        {
+            SaveData.Current.RefreshEnergy();
+            if (SaveData.Current.energy >= SaveData.MaxEnergy)
+            {
+                if (UI != null) UI.Popup("ENERGY ALREADY FULL!", UIFactory.Good, 56);
+                AudioManager.Sfx("deny");
+                onComplete?.Invoke(false);
+                return;
+            }
+            if (!Services.Ads.IsInterstitialReady)
+            {
+                if (UI != null) UI.Popup("AD NOT READY YET", UIFactory.Bad, 52);
+                AudioManager.Sfx("deny");
+                onComplete?.Invoke(false);
+                return;
+            }
+            Services.Ads.ShowInterstitial("energy_refill", ok =>
+            {
+                if (this == null) { onComplete?.Invoke(false); return; }
+                if (ok)
+                {
+                    SaveData.Current.AddEnergy(1);
+                    SyncEnergyNotification();
+                    AudioManager.Sfx("buy");
+                    if (UI != null) UI.Popup("+1 ENERGY! (" + SaveData.Current.energy + "/" + SaveData.MaxEnergy + ")", UIFactory.Good, 64);
+                }
+                else
+                {
+                    AudioManager.Sfx("deny");
+                }
+                if (UI != null) UI.RefreshEnergyUI();
+                onComplete?.Invoke(ok);
+            });
+        }
+
         /// <summary>Summary screen: watch a rewarded ad to double the coins earned this run.</summary>
         public void WatchAdForDoubleCoins()
         {
@@ -468,14 +577,14 @@ namespace TurtleBlaster
             var stats = Stats;
             Services.Ads.ShowRewarded("double_coins", ok =>
             {
-                if (!ok || stats.coinsDoubled || stats != Stats) return;
+                if (this == null || !ok || stats.coinsDoubled || stats != Stats) return;
                 var save = SaveData.Current;
                 save.coins += stats.coins;   // the first share was banked in FinishRun
                 stats.coins *= 2;
                 stats.coinsDoubled = true;
                 save.Save();
                 AudioManager.Sfx("buy");
-                if (State == GameState.Summary) UI.RefreshSummary(stats);
+                if (State == GameState.Summary && UI != null) UI.RefreshSummary(stats);
             });
         }
 
@@ -554,6 +663,7 @@ namespace TurtleBlaster
                 }, rank =>
                 {
                     stats.leaderboardRank = rank;
+                    if (this == null || UI == null) return;
                     if (State == GameState.Summary && stats == Stats) UI.RefreshSummary(stats);
                 });
             }
