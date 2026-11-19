@@ -12,11 +12,13 @@ namespace TurtleBlaster
     /// </summary>
     public class AndroidNotificationService : INotificationService
     {
-        const string ChannelId = "turtle_blaster_energy";
+        const string ChannelId = "turtle_blaster_energy_v2";
         const int EnergyFullId = 1001;
+        const int TestNotifId = 1002;
 
         bool initialized;
         bool permissionRequested;
+        long lastScheduledFireTicks;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void Register()
@@ -35,7 +37,7 @@ namespace TurtleBlaster
                 {
                     Id = ChannelId,
                     Name = "Energy Refill",
-                    Importance = Importance.Default,
+                    Importance = Importance.High,
                     Description = "Notifies when your energy is full (5/5)"
                 };
                 AndroidNotificationCenter.RegisterNotificationChannel(channel);
@@ -61,9 +63,18 @@ namespace TurtleBlaster
         public void ScheduleEnergyFull(DateTime fireTimeUtc, int maxEnergy)
         {
             Initialize();
+            DateTime minFireUtc = DateTime.UtcNow.AddSeconds(2);
+            if (fireTimeUtc < minFireUtc) fireTimeUtc = minFireUtc;
+
             try
             {
-                AndroidNotificationCenter.CancelScheduledNotification(EnergyFullId);
+                if (lastScheduledFireTicks != 0 &&
+                    Math.Abs(fireTimeUtc.Ticks - lastScheduledFireTicks) < TimeSpan.TicksPerSecond * 2 &&
+                    AndroidNotificationCenter.CheckScheduledNotificationStatus(EnergyFullId) == NotificationStatus.Scheduled)
+                {
+                    return;
+                }
+
                 AndroidNotificationCenter.CancelDisplayedNotification(EnergyFullId);
 
                 var notification = new AndroidNotification
@@ -71,9 +82,11 @@ namespace TurtleBlaster
                     Title = "Energy Full!",
                     Text = "All " + maxEnergy + "/" + maxEnergy + " energy refilled! Time to ride!",
                     FireTime = fireTimeUtc.ToLocalTime(),
-                    ShouldAutoCancel = true
+                    ShouldAutoCancel = true,
+                    ShowInForeground = true
                 };
                 AndroidNotificationCenter.SendNotificationWithExplicitID(notification, ChannelId, EnergyFullId);
+                lastScheduledFireTicks = fireTimeUtc.Ticks;
             }
             catch (Exception e)
             {
@@ -81,8 +94,33 @@ namespace TurtleBlaster
             }
         }
 
+        public void ScheduleTestNotification(int delaySeconds = 10)
+        {
+            Initialize();
+            int secs = Math.Max(1, delaySeconds);
+            try
+            {
+                AndroidNotificationCenter.CancelDisplayedNotification(TestNotifId);
+
+                var notification = new AndroidNotification
+                {
+                    Title = "Turtle Blaster Test",
+                    Text = "Local notifications are working! (" + secs + "s test)",
+                    FireTime = DateTime.Now.AddSeconds(secs),
+                    ShouldAutoCancel = true,
+                    ShowInForeground = true
+                };
+                AndroidNotificationCenter.SendNotificationWithExplicitID(notification, ChannelId, TestNotifId);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Notifications] Android test schedule failed: " + e.Message);
+            }
+        }
+
         public void CancelEnergyFull()
         {
+            lastScheduledFireTicks = 0;
             try
             {
                 AndroidNotificationCenter.CancelScheduledNotification(EnergyFullId);

@@ -6,42 +6,31 @@ using Unity.Services.LevelPlay;
 namespace TurtleBlaster
 {
     /// <summary>
-    /// LevelPlay rewarded ads (revive + x2 coins) and interstitial ads (+1 energy).
-    /// Sits on the persistent "Ads" GameObject next to LevelPlayInitializer and registers
-    /// itself as Services.Ads. On platforms LevelPlay does not support (PC), the game keeps
-    /// using MockAdService.
+    /// LevelPlay rewarded ads (revive, x2 coins, and +1 energy). Sits on the persistent "Ads" GameObject
+    /// next to LevelPlayInitializer and registers itself as Services.Ads, so the game's existing revive,
+    /// x2-coins, and +1-energy buttons show real rewarded ads. On platforms LevelPlay does not support (PC),
+    /// the game keeps using MockAdService.
     /// </summary>
     public class RewardedAdManager : MonoBehaviour, IAdService
     {
         [SerializeField] private string adUnitId = "47vhqd4idq0opuxu";
-        [SerializeField] private string interstitialAdUnitId = "47vhqd4idq0opuxu";
         [SerializeField] private float retryDelaySeconds = 30f;
 
         private LevelPlayRewardedAd rewardedAd;
         private bool isLoadingAd;
 
-        private LevelPlayInterstitialAd interstitialAd;
-        private bool isLoadingInterstitial;
-
         // the request currently being shown
         private Action<bool> pendingCallback;
         private bool rewardEarned;
 
-        private Action<bool> pendingInterstitialCallback;
-        private bool interstitialDisplayed;
-
         public bool IsRewardedReady => rewardedAd != null && rewardedAd.IsAdReady();
-
-        public bool IsInterstitialReady =>
-            (interstitialAd != null && interstitialAd.IsAdReady()) ||
-            (interstitialAdUnitId == adUnitId && rewardedAd != null && rewardedAd.IsAdReady());
 
         void Awake()
         {
 #if UNITY_ANDROID || UNITY_IOS
             Services.Ads = this;
             LevelPlayInitializer.Initialized += CreateAd;
-            Debug.Log("RewardedAdManager: using LevelPlay ads (rewarded=" + adUnitId + ", interstitial=" + interstitialAdUnitId + ")");
+            Debug.Log("RewardedAdManager: using LevelPlay rewarded ads (ad unit " + adUnitId + ")");
 #else
             Debug.LogWarning("RewardedAdManager: the active build target is not Android/iOS, so LevelPlay cannot load ads " +
                              "(not even mock ads in the Editor). Using the game's TEST AD screen instead. " +
@@ -74,59 +63,30 @@ namespace TurtleBlaster
                 rewardedAd.OnAdImpressionDataReady -= OnImpressionDataReady;
                 rewardedAd.DestroyAd();
             }
-
-            if (interstitialAd != null)
-            {
-                interstitialAd.OnAdLoaded -= OnInterstitialLoaded;
-                interstitialAd.OnAdLoadFailed -= OnInterstitialLoadFailed;
-                interstitialAd.OnAdDisplayed -= OnInterstitialDisplayed;
-                interstitialAd.OnAdDisplayFailed -= OnInterstitialDisplayFailed;
-                interstitialAd.OnAdClosed -= OnInterstitialClosed;
-                interstitialAd.OnAdClicked -= OnInterstitialClicked;
-                interstitialAd.OnAdInfoChanged -= OnInterstitialInfoChanged;
-                interstitialAd.OnAdImpressionDataReady -= OnImpressionDataReady;
-                interstitialAd.DestroyAd();
-            }
         }
 
         private void CreateAd()
         {
-            if (rewardedAd == null)
-            {
-                // Create the ad only after the SDK is initialized
-                rewardedAd = new LevelPlayRewardedAd(adUnitId);
+            if (rewardedAd != null) return;
 
-                // ILRD (SDK 9.5.0+): impression-level revenue arrives on the ad object
-                rewardedAd.OnAdImpressionDataReady += OnImpressionDataReady;
+            // Create the ad only after the SDK is initialized
+            rewardedAd = new LevelPlayRewardedAd(adUnitId);
 
-                rewardedAd.OnAdLoaded += OnAdLoaded;
-                rewardedAd.OnAdLoadFailed += OnAdLoadFailed;
-                rewardedAd.OnAdDisplayed += OnAdDisplayed;
-                rewardedAd.OnAdDisplayFailed += OnAdDisplayFailed;
-                rewardedAd.OnAdRewarded += OnAdRewarded;
-                rewardedAd.OnAdClosed += OnAdClosed;
-                rewardedAd.OnAdClicked += OnAdClicked;
-                rewardedAd.OnAdInfoChanged += OnAdInfoChanged;
+            // ILRD (SDK 9.5.0+): impression-level revenue arrives on the ad object
+            rewardedAd.OnAdImpressionDataReady += OnImpressionDataReady;
 
-                // Eager preload (conscious choice): the revive offer only stays on screen for a few
-                // seconds, so an ad must already be loaded when the player crashes.
-                LoadAd();
-            }
+            rewardedAd.OnAdLoaded += OnAdLoaded;
+            rewardedAd.OnAdLoadFailed += OnAdLoadFailed;
+            rewardedAd.OnAdDisplayed += OnAdDisplayed;
+            rewardedAd.OnAdDisplayFailed += OnAdDisplayFailed;
+            rewardedAd.OnAdRewarded += OnAdRewarded;
+            rewardedAd.OnAdClosed += OnAdClosed;
+            rewardedAd.OnAdClicked += OnAdClicked;
+            rewardedAd.OnAdInfoChanged += OnAdInfoChanged;
 
-            if (interstitialAd == null && !string.IsNullOrEmpty(interstitialAdUnitId))
-            {
-                interstitialAd = new LevelPlayInterstitialAd(interstitialAdUnitId);
-                interstitialAd.OnAdImpressionDataReady += OnImpressionDataReady;
-                interstitialAd.OnAdLoaded += OnInterstitialLoaded;
-                interstitialAd.OnAdLoadFailed += OnInterstitialLoadFailed;
-                interstitialAd.OnAdDisplayed += OnInterstitialDisplayed;
-                interstitialAd.OnAdDisplayFailed += OnInterstitialDisplayFailed;
-                interstitialAd.OnAdClosed += OnInterstitialClosed;
-                interstitialAd.OnAdClicked += OnInterstitialClicked;
-                interstitialAd.OnAdInfoChanged += OnInterstitialInfoChanged;
-
-                LoadInterstitialAd();
-            }
+            // Eager preload (conscious choice): the revive offer only stays on screen for a few
+            // seconds, so an ad must already be loaded when the player crashes.
+            LoadAd();
         }
 
         public void LoadAd()
@@ -137,24 +97,12 @@ namespace TurtleBlaster
             rewardedAd.LoadAd();
         }
 
-        public void LoadInterstitialAd()
-        {
-            if (interstitialAd == null || isLoadingInterstitial || interstitialAd.IsAdReady()) return;
-            isLoadingInterstitial = true;
-            Debug.Log("Loading interstitial ad...");
-            interstitialAd.LoadAd();
-        }
-
         // ---------------------------------------------------------------- IAdService
 
-        /// <summary>Shows the rewarded ad. onComplete(true) only when the player earned the reward.</summary>
+        /// <summary>Shows the ad. onComplete(true) only when the player earned the reward.</summary>
         public void ShowRewarded(string placement, Action<bool> onComplete)
         {
-            if (pendingCallback != null || pendingInterstitialCallback != null)
-            {
-                onComplete?.Invoke(false);
-                return;   // one ad at a time
-            }
+            if (pendingCallback != null) { onComplete?.Invoke(false); return; }   // one ad at a time
 
             if (rewardedAd == null || !rewardedAd.IsAdReady())
             {
@@ -167,39 +115,9 @@ namespace TurtleBlaster
             pendingCallback = onComplete;
             rewardEarned = false;
             Debug.Log("Showing rewarded ad (" + placement + ")");
-            // Placements ("revive", "double_coins") are only passed to ShowAd once they exist in the
-            // LevelPlay dashboard; until then the default placement is used.
+            // Placements ("revive", "double_coins", "energy_refill") are only passed to ShowAd once
+            // they exist in the LevelPlay dashboard; until then the default placement is used.
             rewardedAd.ShowAd();
-        }
-
-        /// <summary>Shows an interstitial ad. Falls back to the shared rewarded unit when configured with the same Ad Unit ID.</summary>
-        public void ShowInterstitial(string placement, Action<bool> onComplete)
-        {
-            if (pendingInterstitialCallback != null || pendingCallback != null)
-            {
-                onComplete?.Invoke(false);
-                return;
-            }
-
-            if (interstitialAd != null && interstitialAd.IsAdReady())
-            {
-                pendingInterstitialCallback = onComplete;
-                interstitialDisplayed = false;
-                Debug.Log("Showing interstitial ad (" + placement + ")");
-                interstitialAd.ShowAd();
-                return;
-            }
-
-            if (interstitialAdUnitId == adUnitId && rewardedAd != null && rewardedAd.IsAdReady())
-            {
-                Debug.Log("Interstitial unit using shared adUnitId (" + placement + ") -> showing loaded ad unit");
-                ShowRewarded(placement, onComplete);
-                return;
-            }
-
-            Debug.LogWarning("Interstitial ad is not ready yet");
-            onComplete?.Invoke(false);
-            LoadInterstitialAd();
         }
 
         private void Complete(bool rewarded)
@@ -209,14 +127,7 @@ namespace TurtleBlaster
             cb?.Invoke(rewarded);
         }
 
-        private void CompleteInterstitial(bool shown)
-        {
-            var cb = pendingInterstitialCallback;
-            pendingInterstitialCallback = null;
-            cb?.Invoke(shown);
-        }
-
-        // ---------------------------------------------------------------- rewarded callbacks
+        // ---------------------------------------------------------------- callbacks
 
         private void OnAdLoaded(LevelPlayAdInfo adInfo)
         {
@@ -274,52 +185,6 @@ namespace TurtleBlaster
         private void OnAdInfoChanged(LevelPlayAdInfo adInfo)
         {
             Debug.Log($"Rewarded ad info changed - network: {adInfo.AdNetwork}, revenue: ${adInfo.Revenue}");
-        }
-
-        // ---------------------------------------------------------------- interstitial callbacks
-
-        private void OnInterstitialLoaded(LevelPlayAdInfo adInfo)
-        {
-            isLoadingInterstitial = false;
-            Debug.Log("Interstitial ad loaded successfully");
-        }
-
-        private void OnInterstitialLoadFailed(LevelPlayAdError error)
-        {
-            isLoadingInterstitial = false;
-            Debug.LogWarning($"Interstitial ad failed to load: {error.ErrorCode} {error.ErrorMessage}");
-            CancelInvoke(nameof(LoadInterstitialAd));
-            Invoke(nameof(LoadInterstitialAd), retryDelaySeconds);
-        }
-
-        private void OnInterstitialDisplayed(LevelPlayAdInfo adInfo)
-        {
-            interstitialDisplayed = true;
-            Debug.Log("Interstitial ad displayed");
-        }
-
-        private void OnInterstitialDisplayFailed(LevelPlayAdInfo adInfo, LevelPlayAdError error)
-        {
-            Debug.LogError($"Interstitial ad failed to display: {error.ErrorMessage}");
-            CompleteInterstitial(false);
-            LoadInterstitialAd();
-        }
-
-        private void OnInterstitialClicked(LevelPlayAdInfo adInfo)
-        {
-            Debug.Log("Interstitial ad clicked");
-        }
-
-        private void OnInterstitialClosed(LevelPlayAdInfo adInfo)
-        {
-            Debug.Log("Interstitial ad closed");
-            CompleteInterstitial(interstitialDisplayed);
-            LoadInterstitialAd();
-        }
-
-        private void OnInterstitialInfoChanged(LevelPlayAdInfo adInfo)
-        {
-            Debug.Log($"Interstitial ad info changed - network: {adInfo.AdNetwork}, revenue: ${adInfo.Revenue}");
         }
 
         private void OnImpressionDataReady(LevelPlayImpressionData impressionData)

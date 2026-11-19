@@ -155,6 +155,9 @@ namespace TurtleBlaster
                 c.Ellipse(4, 4, 3.8f, 3.8f, DarkGray);
                 c.Ellipse(4, 4, 1.6f, 1.6f, Gray);
                 c.Set(4, 4, K);
+                c.Set(3, 3, K);
+                c.Set(5, 5, K);
+                c.Set(3, 5, White);
                 c.Outline(K);
                 return c.ToSprite(16f);
             };
@@ -203,6 +206,9 @@ namespace TurtleBlaster
                 return c.ToSprite(16f, new Vector2(0.5f, 0f));
             };
 
+            g["cone_desert"] = ConeDesert;
+            g["cone_snow"] = ConeSnow;
+
             g["pothole"] = () =>
             {
                 var c = new PixelCanvas(40, 6);
@@ -224,6 +230,9 @@ namespace TurtleBlaster
                 c.Outline(K);
                 return c.ToSprite(16f);
             };
+
+            g["boulder_desert"] = BoulderDesert;
+            g["boulder_snow"] = BoulderSnow;
 
             g["rail"] = () =>
             {
@@ -356,18 +365,28 @@ namespace TurtleBlaster
 
             g["hills_far"] = () => Hills(256, 64, PixelCanvas.C("#7fb7d6"), 20f);
             g["hills_near"] = () => Hills(256, 48, PixelCanvas.C("#5f9f6e"), 14f);
+            g["hills_far_desert"] = HillsFarDesert;
+            g["hills_near_desert"] = HillsNearDesert;
+            g["hills_far_snow"] = HillsFarSnow;
+            g["hills_near_snow"] = HillsNearSnow;
 
-            g["sky"] = () =>
-            {
-                var c = new PixelCanvas(2, 48);
-                for (int y = 0; y < 48; y++)
-                {
-                    var col = Color.Lerp(PixelCanvas.C("#ffd9a0"), PixelCanvas.C("#5ec2ff"), Mathf.Pow(y / 47f, 0.8f));
-                    c.Rect(0, y, 2, 1, col);
-                }
-                var s = c.ToSprite(2f);
-                return s;
-            };
+            g["sky"] = () => SkyGradient("#ffd9a0", "#5ec2ff");
+            g["sky_desert"] = () => SkyGradient("#ffbe76", "#4bcffa");
+            g["sky_snow"] = () => SkyGradient("#b8e1ff", "#243b6b");
+
+            // scenic roadside props per biome
+            g["prop_meadow_tree"] = PropMeadowTree;
+            g["prop_meadow_bush"] = PropMeadowBush;
+            g["prop_desert_cactus"] = PropDesertCactus;
+            g["prop_desert_rock"] = PropDesertRock;
+            g["prop_snow_pine"] = PropSnowPine;
+            g["prop_snow_snowman"] = PropSnowSnowman;
+
+            // turbo & thruster VFX
+            g["turbo_flame"] = TurboFlame;
+            g["turbo_core"] = TurboCore;
+            g["turbo_glow"] = TurboGlow;
+            g["turbo_ring"] = TurboRing;
 
             // ----- UI -----
             g["ui_panel"] = () =>
@@ -485,6 +504,19 @@ namespace TurtleBlaster
             return c.ToSprite(16f);
         }
 
+        static Sprite SkyGradient(string botHex, string topHex)
+        {
+            var c = new PixelCanvas(2, 48);
+            var bot = PixelCanvas.C(botHex);
+            var top = PixelCanvas.C(topHex);
+            for (int y = 0; y < 48; y++)
+            {
+                var col = Color.Lerp(bot, top, Mathf.Pow(y / 47f, 0.8f));
+                c.Rect(0, y, 2, 1, col);
+            }
+            return c.ToSprite(2f);
+        }
+
         static Sprite Hills(int w, int h, Color32 col, float amp)
         {
             var c = new PixelCanvas(w, h);
@@ -496,6 +528,300 @@ namespace TurtleBlaster
                 for (int y = 0; y < top && y < h; y++) c.Set(x, y, col);
             }
             return c.ToSprite(8f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite HillsFarDesert()
+        {
+            const int w = 256, h = 64;
+            var c = new PixelCanvas(w, h);
+            var terracotta = PixelCanvas.C("#c97b53");
+            var band = PixelCanvas.C("#9c5333");
+            for (int x = 0; x < w; x++)
+            {
+                float t = x / (float)w * Mathf.PI * 2f;
+                float mesaWave = Mathf.Sin(t * 2f) * 0.85f + Mathf.Sin(t * 4f + 0.6f) * 0.35f;
+                float clamped = Mathf.Clamp(mesaWave, -0.55f, 0.65f); // flat-topped mesas
+                int top = Mathf.RoundToInt(h * 0.44f + clamped * 22f);
+                for (int y = 0; y < top && y < h; y++)
+                    c.Set(x, y, (y == top - 6 || y == top - 7 || y == 14) ? band : terracotta);
+            }
+            return c.ToSprite(8f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite HillsNearDesert()
+        {
+            const int w = 256, h = 48;
+            var c = new PixelCanvas(w, h);
+            var dune = PixelCanvas.C("#d9964e");
+            var highlight = PixelCanvas.C("#eab26c");
+            for (int x = 0; x < w; x++)
+            {
+                float t = x / (float)w * Mathf.PI * 2f;
+                int top = Mathf.RoundToInt(h * 0.42f + Mathf.Sin(t * 3f) * 9f + Mathf.Sin(t * 6f + 1.2f) * 3.5f);
+                for (int y = 0; y < top && y < h; y++)
+                    c.Set(x, y, y >= top - 2 ? highlight : dune);
+            }
+            return c.ToSprite(8f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite HillsFarSnow()
+        {
+            const int w = 256, h = 64;
+            var c = new PixelCanvas(w, h);
+            var slate = PixelCanvas.C("#5c7a99");
+            var snow = PixelCanvas.C("#eef7ff");
+            for (int x = 0; x < w; x++)
+            {
+                float t = x / (float)w * Mathf.PI * 2f;
+                // jagged triangle-wave alpine peaks
+                float p1 = Mathf.Abs(((t * 3f / (Mathf.PI * 2f)) % 1f) * 2f - 1f);
+                float p2 = Mathf.Abs(((t * 5f / (Mathf.PI * 2f) + 0.3f) % 1f) * 2f - 1f);
+                int top = Mathf.RoundToInt(18f + p1 * 28f + p2 * 12f);
+                int snowLine = Mathf.Max(34, top - 9);
+                for (int y = 0; y < top && y < h; y++)
+                    c.Set(x, y, y >= snowLine ? snow : slate);
+            }
+            return c.ToSprite(8f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite HillsNearSnow()
+        {
+            const int w = 256, h = 48;
+            var c = new PixelCanvas(w, h);
+            var slope = PixelCanvas.C("#8cb6d9");
+            var snowTop = PixelCanvas.C("#e6f4ff");
+            for (int x = 0; x < w; x++)
+            {
+                float t = x / (float)w * Mathf.PI * 2f;
+                int top = Mathf.RoundToInt(h * 0.46f + Mathf.Sin(t * 2f + 0.5f) * 8f + Mathf.Cos(t * 5f) * 4f);
+                for (int y = 0; y < top && y < h; y++)
+                    c.Set(x, y, y >= top - 4 ? snowTop : slope);
+            }
+            return c.ToSprite(8f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite ConeDesert()
+        {
+            var c = new PixelCanvas(12, 16);
+            var cactus = PixelCanvas.C("#3ca35a");
+            var darkCactus = PixelCanvas.C("#27753e");
+            c.Rect(2, 1, 8, 2, Brown);
+            c.Ellipse(6, 7, 4f, 5.5f, cactus);
+            c.Rect(5, 3, 2, 9, darkCactus);
+            c.Rect(4, 12, 4, 2, Yellow); // desert prickly top bloom
+            c.Set(3, 6, White); c.Set(8, 8, White); c.Set(3, 10, White);
+            c.Outline(K);
+            return c.ToSprite(16f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite ConeSnow()
+        {
+            var c = new PixelCanvas(12, 16);
+            var ice = PixelCanvas.C("#6ee7ff");
+            var deepIce = PixelCanvas.C("#2d9cdb");
+            c.Rect(1, 0, 10, 2, PixelCanvas.C("#d8efff"));
+            c.Triangle(new Vector2(1.5f, 2), new Vector2(10.5f, 2), new Vector2(6f, 15f), deepIce);
+            c.Triangle(new Vector2(2.5f, 2), new Vector2(6.5f, 2), new Vector2(6f, 15f), ice);
+            c.Rect(5, 8, 1, 5, White);
+            c.Outline(K);
+            return c.ToSprite(16f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite BoulderDesert()
+        {
+            var c = new PixelCanvas(26, 26);
+            var rock = PixelCanvas.C("#c86432");
+            var hi = PixelCanvas.C("#eb8c4c");
+            var crack = PixelCanvas.C("#7a3216");
+            c.Ellipse(13, 13, 12.5f, 12.5f, rock);
+            c.Ellipse(10, 17, 5f, 3.8f, hi);
+            c.Line(14, 5, 18, 11, crack);
+            c.Line(18, 11, 15, 16, crack);
+            c.Line(6, 9, 10, 11, crack);
+            c.Outline(K);
+            return c.ToSprite(16f);
+        }
+
+        static Sprite BoulderSnow()
+        {
+            var c = new PixelCanvas(26, 26);
+            var snow = PixelCanvas.C("#eef7ff");
+            var shade = PixelCanvas.C("#99c8f0");
+            c.Ellipse(13, 13, 12.5f, 12.5f, shade);
+            c.Ellipse(12, 15, 10.5f, 9.5f, snow);
+            c.Ellipse(9, 18, 4.5f, 3f, White);
+            c.Outline(K);
+            return c.ToSprite(16f);
+        }
+
+        static Sprite PropMeadowTree()
+        {
+            var c = new PixelCanvas(24, 34);
+            var bark = PixelCanvas.C("#7f4f24");
+            var leafDark = PixelCanvas.C("#2f8f46");
+            var leaf = PixelCanvas.C("#52c84a");
+            var leafHi = PixelCanvas.C("#8ce86b");
+            c.Rect(10, 0, 4, 13, bark);
+            c.Ellipse(12, 19, 9f, 8f, leafDark);
+            c.Ellipse(11, 22, 8f, 7f, leaf);
+            c.Ellipse(9, 25, 4.5f, 3.5f, leafHi);
+            return c.ToSprite(16f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite PropMeadowBush()
+        {
+            var c = new PixelCanvas(20, 12);
+            var leafDark = PixelCanvas.C("#2f8f46");
+            var leaf = PixelCanvas.C("#52c84a");
+            c.Ellipse(6, 4, 4.5f, 3.5f, leafDark);
+            c.Ellipse(14, 4, 4.5f, 3.5f, leafDark);
+            c.Ellipse(10, 6, 5.5f, 4.2f, leaf);
+            c.Set(6, 5, Yellow); c.Set(11, 7, PixelCanvas.C("#ff7eb6")); c.Set(15, 5, Yellow);
+            return c.ToSprite(16f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite PropDesertCactus()
+        {
+            var c = new PixelCanvas(18, 30);
+            var green = PixelCanvas.C("#3ca35a");
+            var hi = PixelCanvas.C("#5cc976");
+            c.Rect(7, 0, 4, 24, green);
+            c.Rect(8, 2, 1, 20, hi);
+            // left arm
+            c.Rect(2, 10, 5, 3, green);
+            c.Rect(2, 12, 3, 7, green);
+            // right arm
+            c.Rect(11, 13, 5, 3, green);
+            c.Rect(13, 15, 3, 7, green);
+            // desert bloom on top
+            c.Rect(7, 24, 4, 2, PixelCanvas.C("#ff5c8a"));
+            c.Set(8, 26, Yellow);
+            return c.ToSprite(16f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite PropDesertRock()
+        {
+            var c = new PixelCanvas(26, 18);
+            var terra = PixelCanvas.C("#c46233");
+            var sand = PixelCanvas.C("#df8949");
+            var dark = PixelCanvas.C("#8a391b");
+            c.Rect(3, 0, 12, 14, terra);
+            c.Rect(5, 14, 8, 2, sand);
+            c.Rect(3, 6, 12, 2, dark);
+            c.Rect(14, 0, 9, 9, sand);
+            c.Rect(14, 4, 9, 1, dark);
+            return c.ToSprite(16f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite PropSnowPine()
+        {
+            var c = new PixelCanvas(22, 36);
+            var trunk = PixelCanvas.C("#5c3a21");
+            var pine = PixelCanvas.C("#2b5c4f");
+            var snow = PixelCanvas.C("#eef7ff");
+            c.Rect(9, 0, 4, 7, trunk);
+            c.Triangle(new Vector2(2, 7), new Vector2(20, 7), new Vector2(11, 20), pine);
+            c.Triangle(new Vector2(4, 15), new Vector2(18, 15), new Vector2(11, 27), pine);
+            c.Triangle(new Vector2(6, 22), new Vector2(16, 22), new Vector2(11, 33), pine);
+            // snow caps on bough tips
+            c.Triangle(new Vector2(7, 26), new Vector2(15, 26), new Vector2(11, 33), snow);
+            c.Rect(4, 15, 3, 2, snow); c.Rect(15, 15, 3, 2, snow);
+            c.Rect(2, 7, 4, 2, snow); c.Rect(16, 7, 4, 2, snow);
+            return c.ToSprite(16f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite PropSnowSnowman()
+        {
+            var c = new PixelCanvas(18, 24);
+            var snow = PixelCanvas.C("#eef7ff");
+            c.Ellipse(9, 5, 5.5f, 4.5f, snow);
+            c.Ellipse(9, 12, 4.2f, 3.6f, snow);
+            c.Ellipse(9, 18, 3.2f, 3f, snow);
+            c.Rect(5, 14, 8, 2, Red);        // scarf
+            c.Rect(11, 12, 2, 3, Red);
+            c.Set(8, 19, DarkGray); c.Set(10, 19, DarkGray); // eyes
+            c.Rect(9, 17, 3, 1, Orange);     // carrot nose
+            c.Rect(5, 21, 8, 2, DarkGray);   // hat
+            return c.ToSprite(16f, new Vector2(0.5f, 0f));
+        }
+
+        static Sprite TurboFlame()
+        {
+            const int w = 28, h = 14;
+            var c = new PixelCanvas(w, h);
+            for (int x = 0; x < w; x++)
+            {
+                float t = (x + 0.5f) / w; // 0 = left tip, 1 = right nozzle base
+                float swell = x >= 24 ? Mathf.Lerp(5.4f, 4.0f, (x - 24f) / 3f) : 5.8f * Mathf.Pow(t, 0.58f);
+                float jag = x < 16 ? (Mathf.Sin(x * 1.4f) * 0.55f) : 0f;
+                float r = Mathf.Max(0.4f, swell + jag);
+                for (int y = 0; y < h; y++)
+                {
+                    float dy = Mathf.Abs(y + 0.5f - h * 0.5f);
+                    if (dy <= r)
+                    {
+                        byte a = dy <= r * 0.62f ? (byte)245 : (byte)150;
+                        c.Set(x, y, new Color32(255, 255, 255, a));
+                    }
+                }
+            }
+            return c.ToSprite(16f, new Vector2(1f, 0.5f));
+        }
+
+        static Sprite TurboCore()
+        {
+            const int w = 18, h = 8;
+            var c = new PixelCanvas(w, h);
+            for (int x = 0; x < w; x++)
+            {
+                float t = (x + 0.5f) / w;
+                float r = (x >= 15 ? 2.6f : 3.2f * Mathf.Pow(t, 0.7f));
+                for (int y = 0; y < h; y++)
+                {
+                    float dy = Mathf.Abs(y + 0.5f - h * 0.5f);
+                    if (dy <= r)
+                    {
+                        byte a = dy <= r * 0.6f ? (byte)255 : (byte)185;
+                        c.Set(x, y, new Color32(255, 255, 255, a));
+                    }
+                }
+            }
+            return c.ToSprite(16f, new Vector2(1f, 0.5f));
+        }
+
+        static Sprite TurboGlow()
+        {
+            const int s = 24;
+            var c = new PixelCanvas(s, s);
+            for (int y = 0; y < s; y++)
+                for (int x = 0; x < s; x++)
+                {
+                    float dx = (x + 0.5f - s * 0.5f) / (s * 0.5f);
+                    float dy = (y + 0.5f - s * 0.5f) / (s * 0.5f);
+                    float d = Mathf.Sqrt(dx * dx + dy * dy);
+                    byte a = d < 0.32f ? (byte)185 : d < 0.58f ? (byte)120 : d < 0.82f ? (byte)58 : d < 1f ? (byte)24 : (byte)0;
+                    if (a > 0) c.Set(x, y, new Color32(255, 255, 255, a));
+                }
+            return c.ToSprite(16f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite TurboRing()
+        {
+            const int w = 14, h = 28;
+            var c = new PixelCanvas(w, h);
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    float nx = (x + 0.5f - w * 0.5f) / (w * 0.45f);
+                    float ny = (y + 0.5f - h * 0.5f) / (h * 0.46f);
+                    float rn = Mathf.Sqrt(nx * nx + ny * ny);
+                    if (rn >= 0.70f && rn <= 1.0f)
+                    {
+                        byte a = (rn >= 0.80f && rn <= 0.92f) ? (byte)235 : (byte)120;
+                        c.Set(x, y, new Color32(255, 255, 255, a));
+                    }
+                }
+            return c.ToSprite(16f, new Vector2(0.5f, 0.5f));
         }
     }
 }

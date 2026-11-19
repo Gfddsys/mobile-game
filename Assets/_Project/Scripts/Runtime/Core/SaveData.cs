@@ -31,6 +31,16 @@ namespace TurtleBlaster
         public bool IsComplete(RunStats s) => GetProgress(s) >= target;
     }
 
+    public struct LoginRewardDef
+    {
+        public int day;
+        public int coins;
+        public int parts;
+        public bool fullEnergy;
+        public string label;
+        public string iconSprite;
+    }
+
     /// <summary>Persistent player profile. Stored as JSON in PlayerPrefs.</summary>
     [Serializable]
     public class SaveData
@@ -38,6 +48,17 @@ namespace TurtleBlaster
         const string Key = "turtleblaster.save.v1";
         public const int MaxEnergy = 5;
         public const int EnergyRefillSeconds = 15 * 60;
+
+        public static readonly LoginRewardDef[] DailyRewards =
+        {
+            new LoginRewardDef { day = 1, coins = 100, parts = 0, fullEnergy = false, label = "+100 Coins", iconSprite = "coin" },
+            new LoginRewardDef { day = 2, coins = 0,   parts = 2, fullEnergy = false, label = "+2 Parts", iconSprite = "part" },
+            new LoginRewardDef { day = 3, coins = 200, parts = 0, fullEnergy = false, label = "+200 Coins", iconSprite = "coin" },
+            new LoginRewardDef { day = 4, coins = 150, parts = 0, fullEnergy = true,  label = "+150 Coins\nFull Energy", iconSprite = "energy" },
+            new LoginRewardDef { day = 5, coins = 0,   parts = 4, fullEnergy = false, label = "+4 Parts", iconSprite = "part" },
+            new LoginRewardDef { day = 6, coins = 350, parts = 2, fullEnergy = false, label = "+350 Coins\n+2 Parts", iconSprite = "coin" },
+            new LoginRewardDef { day = 7, coins = 750, parts = 6, fullEnergy = true,  label = "+750 Coins\n+6 Parts\nFull Energy", iconSprite = "energy" },
+        };
 
         public int coins;
         public int parts;
@@ -49,6 +70,8 @@ namespace TurtleBlaster
         public int energy = MaxEnergy;
         public bool energyInitialized;
         public long energyNextRefillUtcTicks;
+        public int loginStreak;
+        public int lastLoginClaimDay;
         public bool sfxOn = true;
         public bool musicOn = true;
 
@@ -204,6 +227,76 @@ namespace TurtleBlaster
             return GetTimeUntilNextEnergy(now) + TimeSpan.FromSeconds(remainingAfterNext * EnergyRefillSeconds);
         }
 
+        // ---------------- 7-day daily login rewards ----------------
+        public static int GetDayNumber(DateTime localDate) => (int)(localDate.Date.Ticks / TimeSpan.TicksPerDay);
+
+        public void GetDailyLoginState(out int claimedCount, out int nextDayIndex, out bool canClaimToday, DateTime? nowLocal = null)
+        {
+            int today = GetDayNumber(nowLocal ?? DateTime.Now);
+            int streak = Mathf.Clamp(loginStreak, 0, DailyRewards.Length);
+
+            if (lastLoginClaimDay <= 0 || streak == 0)
+            {
+                claimedCount = 0;
+                nextDayIndex = 0;
+                canClaimToday = true;
+                return;
+            }
+
+            int diff = today - lastLoginClaimDay;
+            if (diff <= 0)
+            {
+                // Same day (already claimed) or clock moved backwards
+                claimedCount = streak;
+                nextDayIndex = streak % DailyRewards.Length;
+                canClaimToday = false;
+            }
+            else if (diff == 1)
+            {
+                // Consecutive day (loop back to Day 1 cleanly after Day 7)
+                claimedCount = streak >= DailyRewards.Length ? 0 : streak;
+                nextDayIndex = claimedCount;
+                canClaimToday = true;
+            }
+            else
+            {
+                // Missed one or more days -> restart streak at Day 1
+                claimedCount = 0;
+                nextDayIndex = 0;
+                canClaimToday = true;
+            }
+        }
+
+        public bool CanClaimDailyLogin(DateTime? nowLocal = null)
+        {
+            GetDailyLoginState(out _, out _, out bool canClaimToday, nowLocal);
+            return canClaimToday;
+        }
+
+        public bool TryClaimDailyLogin(out LoginRewardDef claimed, DateTime? nowLocal = null)
+        {
+            DateTime now = nowLocal ?? DateTime.Now;
+            GetDailyLoginState(out _, out int nextDayIndex, out bool canClaimToday, now);
+            if (!canClaimToday)
+            {
+                claimed = default;
+                return false;
+            }
+
+            claimed = DailyRewards[nextDayIndex];
+            coins += claimed.coins;
+            parts += claimed.parts;
+            if (claimed.fullEnergy)
+            {
+                energy = MaxEnergy;
+                energyNextRefillUtcTicks = 0;
+            }
+            loginStreak = nextDayIndex + 1;
+            lastLoginClaimDay = GetDayNumber(now);
+            Save();
+            return true;
+        }
+
         public int GetLevel(UpgradeId id) => upgradeLevels[(int)id];
 
         public UpgradeTier GetTier(UpgradeId id)
@@ -308,6 +401,8 @@ namespace TurtleBlaster
             d.energy = Mathf.Clamp(d.energy, 0, MaxEnergy);
             if (d.energy >= MaxEnergy) d.energyNextRefillUtcTicks = 0;
             else if (d.energyNextRefillUtcTicks <= 0) d.energyNextRefillUtcTicks = DateTime.UtcNow.AddSeconds(EnergyRefillSeconds).Ticks;
+            d.loginStreak = Mathf.Clamp(d.loginStreak, 0, DailyRewards.Length);
+            if (d.lastLoginClaimDay < 0) d.lastLoginClaimDay = 0;
             return d;
         }
 

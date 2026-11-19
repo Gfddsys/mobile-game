@@ -13,6 +13,7 @@ namespace TurtleBlaster
     public class WorldGenerator : MonoBehaviour
     {
         public const int OrderTerrain = 0;
+        public const int OrderDecor = -1;
         public const int OrderProps = 2;
         public const int OrderPickups = 5;
 
@@ -151,18 +152,23 @@ namespace TurtleBlaster
             }
             float bottom = minY - 8f;
 
-            // ---- mesh: grass strip (vertices 0..3n) + dirt block (second vertex set) ----
-            Color biomeTint = Color.Lerp(Color.white, ParallaxBackground.EvaluateBiomeTint(x0, out _), 0.38f);
+            // ---- mesh: biome-coloured top strip (vertices 0..3n) + dirt/rock block (second vertex set) ----
             var verts = new Vector3[n * 3];
             var cols = new Color32[n * 3];
-            Color32 grassA = (Color)PixelCanvas.C("#52c84a") * biomeTint;
-            Color32 grassB = (Color)PixelCanvas.C("#43b03d") * biomeTint;
-            Color32 dirtTop = (Color)PixelCanvas.C("#8d5a2b") * biomeTint;
-            Color32 dirtBot = (Color)PixelCanvas.C("#4a2f17") * biomeTint;
+            var verts2 = new Vector3[n * 2];
+            var cols2 = new Color32[n * 2];
             for (int i = 0; i < n; i++)
             {
                 float lx = i * cfg.sampleSpacing;
+                float wx = x0 + lx;
                 float y = heights[i];
+                Color biomeTint = Color.Lerp(Color.white, ParallaxBackground.EvaluateBiomeTint(wx, out _), 0.32f);
+                LevelBiomes.EvaluateGroundColors(wx, out var gA, out var gB, out var dTop, out var dBot);
+                Color32 grassA = (Color)gA * biomeTint;
+                Color32 grassB = (Color)gB * biomeTint;
+                Color32 dirtTop = (Color)dTop * biomeTint;
+                Color32 dirtBot = (Color)dBot * biomeTint;
+
                 verts[i * 3 + 0] = new Vector3(lx, y, 0);
                 verts[i * 3 + 1] = new Vector3(lx, y - 0.4f, 0);
                 verts[i * 3 + 2] = new Vector3(lx, bottom, 0);
@@ -170,12 +176,8 @@ namespace TurtleBlaster
                 cols[i * 3 + 0] = alt ? grassA : grassB;
                 cols[i * 3 + 1] = alt ? grassA : grassB;
                 cols[i * 3 + 2] = dirtBot;
-            }
-            // dirt top colour sits on the grass bottom vertices of a *second* set so the grass band keeps a hard edge
-            var verts2 = new Vector3[n * 2];
-            var cols2 = new Color32[n * 2];
-            for (int i = 0; i < n; i++)
-            {
+
+                // dirt top colour sits on the grass bottom vertices of a *second* set so the top band keeps a hard edge
                 verts2[i * 2 + 0] = verts[i * 3 + 1];
                 verts2[i * 2 + 1] = verts[i * 3 + 2];
                 cols2[i * 2 + 0] = dirtTop;
@@ -222,7 +224,38 @@ namespace TurtleBlaster
             edge.sharedMaterial = groundMat;
 
             Populate(index, x0, x0 + w);
+            SpawnDecorProps(index, x0, x0 + w);
             return go;
+        }
+
+        void SpawnDecorProps(int chunkIndex, float x0, float x1)
+        {
+            var decorRng = new System.Random(seed * 3571 + chunkIndex * 9187);
+            float cursor = x0 + 1.5f + (float)decorRng.NextDouble() * 4.5f;
+            while (cursor < x1 - 1.5f)
+            {
+                if (cursor >= 8f)
+                {
+                    var biome = LevelBiomes.Get(LevelBiomes.GetIndex(cursor));
+                    var pool = biome.decorSprites;
+                    if (pool != null && pool.Length > 0)
+                    {
+                        string sprName = pool[decorRng.Next(pool.Length)];
+                        float slopeSink = 0.12f + Mathf.Abs(Mathf.Tan(SlopeDegAt(cursor) * Mathf.Deg2Rad)) * 0.45f;
+                        var go = MakeSprite("Decor_" + sprName, sprName, new Vector2(cursor, HeightAt(cursor) - slopeSink), 0f, OrderDecor);
+                        float sc = 0.78f + (float)decorRng.NextDouble() * 0.22f;
+                        float flip = decorRng.Next(2) == 0 ? -1f : 1f;
+                        go.transform.localScale = new Vector3(sc * flip, sc, 1f);
+
+                        var sr = go.GetComponent<SpriteRenderer>();
+                        Color atmos = Color.Lerp(Color.white, ParallaxBackground.EvaluateBiomeTint(cursor, out _), 0.45f);
+                        Color c = biome.decorTint * atmos;
+                        c.a = biome.decorTint.a;
+                        sr.color = c;
+                    }
+                }
+                cursor += 9.0f + (float)decorRng.NextDouble() * 7.5f;
+            }
         }
 
         // -------------------------------------------------------------
@@ -335,7 +368,8 @@ namespace TurtleBlaster
 
         void SpawnCone(float x)
         {
-            var go = MakeSprite("Cone", "cone", new Vector2(x, HeightAt(x) - 0.03f), 0f, OrderProps);
+            string spr = LevelBiomes.Get(LevelBiomes.GetIndex(x)).coneSprite;
+            var go = MakeSprite("Cone", spr, new Vector2(x, HeightAt(x) - 0.03f), 0f, OrderProps);
             SetupTrigger(go, new Vector2(0.4f, 0.65f), new Vector2(0, 0.42f));
             var h = go.AddComponent<Hazard>(); h.type = HazardType.Cone;
         }
@@ -371,7 +405,8 @@ namespace TurtleBlaster
 
         void SpawnBoulder(float x)
         {
-            var go = MakeSprite("Boulder", "boulder", new Vector2(x, HeightAt(x) + 0.9f), 0f, OrderProps + 1);
+            string spr = LevelBiomes.Get(LevelBiomes.GetIndex(x)).boulderSprite;
+            var go = MakeSprite("Boulder", spr, new Vector2(x, HeightAt(x) + 0.9f), 0f, OrderProps + 1);
             var rb = go.AddComponent<Rigidbody2D>();
             rb.mass = 6f; rb.gravityScale = cfg.gravityScale;
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;

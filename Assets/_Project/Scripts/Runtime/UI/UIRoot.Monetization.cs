@@ -11,24 +11,27 @@ namespace TurtleBlaster
     /// </summary>
     public partial class UIRoot
     {
-        RectTransform skinsScreen, shopScreen, ranksScreen, reviveOverlay, energyOverlay, adOverlay, purchaseOverlay;
+        RectTransform skinsScreen, shopScreen, ranksScreen, reviveOverlay, energyOverlay, dailyRewardOverlay, adOverlay, purchaseOverlay;
         Text skinsWallet, shopWallet, shopNote, ranksRank, ranksName, ranksDist, ranksScore, ranksDate;
-        Text reviveTimerText, energyOverlayTimerText, adTitle, adSub, adCountdown, purchaseText;
+        Text reviveTimerText, energyOverlayTimerText, dailyStatusText, adTitle, adSub, adCountdown, purchaseText;
         Image reviveBar;
-        Button adClaimBtn, doubleCoinsBtn, energyOverlayAdBtn;
+        Button adClaimBtn, doubleCoinsBtn, energyOverlayAdBtn, dailyClaimBtn;
 
         class SkinCard { public SkinDef skin; public Image preview; public Text price; public Button button; }
+        class DailyCard { public LoginRewardDef reward; public Image bg; public Text status; }
         readonly List<SkinCard> skinCards = new List<SkinCard>();
+        readonly List<DailyCard> dailyCards = new List<DailyCard>();
         readonly List<Button> productButtons = new List<Button>();
 
         Action<bool> reviveCallback, adCallback, purchaseCallback;
         float reviveDuration, reviveLeft, adLeft;
         int overlayClosedFrame = -1;
 
-        /// <summary>A modal dialog (ad / purchase / revive / energy) is open, or was closed this frame.</summary>
+        /// <summary>A modal dialog (ad / purchase / revive / energy / daily) is open, or was closed this frame.</summary>
         public bool OverlayOpen =>
             adOverlay.gameObject.activeSelf || purchaseOverlay.gameObject.activeSelf ||
             reviveOverlay.gameObject.activeSelf || energyOverlay.gameObject.activeSelf ||
+            (dailyRewardOverlay != null && dailyRewardOverlay.gameObject.activeSelf) ||
             overlayClosedFrame == Time.frameCount;
 
         void BuildExtras(Transform parent)
@@ -39,6 +42,7 @@ namespace TurtleBlaster
             // overlays last so they draw on top of everything
             BuildRevive(parent);
             BuildEnergyOverlay(parent);
+            BuildDailyRewardOverlay(parent);
             BuildAdOverlay(parent);
             BuildPurchaseOverlay(parent);
         }
@@ -49,6 +53,7 @@ namespace TurtleBlaster
             shopScreen.gameObject.SetActive(false);
             ranksScreen.gameObject.SetActive(false);
             if (energyOverlay != null) energyOverlay.gameObject.SetActive(false);
+            if (dailyRewardOverlay != null) dailyRewardOverlay.gameObject.SetActive(false);
         }
 
         static RectTransform FullScreen(Transform parent, string name, Color dim)
@@ -435,7 +440,7 @@ namespace TurtleBlaster
             string nextStr = full ? "FULL" : "Next +1 in " + FormatCountdown(save.GetTimeUntilNextEnergy());
             string fullStr = full ? "FULL" : "Full in " + FormatCountdown(save.GetTimeUntilFullEnergy());
             Color timerCol = e == 0 ? UIFactory.Bad : (full ? UIFactory.Good : new Color(0.8f, 0.9f, 1f));
-            string adLabel = full ? "ENERGY FULL" : (Services.Ads.IsInterstitialReady ? "+1 ENERGY (AD)" : "AD LOADING...");
+            string adLabel = full ? "ENERGY FULL" : (Services.Ads.IsRewardedReady ? "+1 ENERGY (AD)" : "AD LOADING...");
             Color adCol = canAd ? new Color(0.85f, 0.55f, 0.1f) : new Color(0.35f, 0.35f, 0.45f);
 
             if (menuEnergyText != null) menuEnergyText.text = energyStr;
@@ -468,7 +473,132 @@ namespace TurtleBlaster
             {
                 energyOverlayAdBtn.interactable = canAd;
                 energyOverlayAdBtn.targetGraphic.color = adCol;
-                UIFactory.SetButtonLabel(energyOverlayAdBtn, Services.Ads.IsInterstitialReady ? "WATCH AD (+1 ENERGY)" : "AD NOT READY YET");
+                UIFactory.SetButtonLabel(energyOverlayAdBtn, Services.Ads.IsRewardedReady ? "WATCH AD (+1 ENERGY)" : "AD NOT READY YET");
+            }
+        }
+
+        // =====================================================================
+        // 7-Day Daily Login Rewards
+        // =====================================================================
+        void BuildDailyRewardOverlay(Transform parent)
+        {
+            dailyRewardOverlay = FullScreen(parent, "DailyRewards", new Color(0, 0, 0, 0.72f));
+            var panel = UIFactory.PanelBox(dailyRewardOverlay, "Panel", new Color(0.14f, 0.16f, 0.28f));
+            UIFactory.Place((RectTransform)panel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1560, 760));
+
+            var title = UIFactory.Label(panel.transform, "7-DAY LOGIN REWARDS", 60, UIFactory.Accent);
+            UIFactory.Place((RectTransform)title.transform, new Vector2(0.5f, 1), new Vector2(0, -24), new Vector2(1400, 72), new Vector2(0.5f, 1));
+            dailyStatusText = UIFactory.Label(panel.transform, "", 28, new Color(0.82f, 0.9f, 1f));
+            UIFactory.Place((RectTransform)dailyStatusText.transform, new Vector2(0.5f, 1), new Vector2(0, -96), new Vector2(1400, 38), new Vector2(0.5f, 1));
+
+            var pos = new[]
+            {
+                new Vector2(-540, 105), new Vector2(-180, 105), new Vector2(180, 105), new Vector2(540, 105),
+                new Vector2(-430, -110), new Vector2(-70, -110), new Vector2(365, -110),
+            };
+            var rewards = SaveData.DailyRewards;
+            for (int i = 0; i < rewards.Length; i++)
+            {
+                var r = rewards[i];
+                float cardW = r.day == 7 ? 480f : 330f;
+                var card = UIFactory.PanelBox(panel.transform, "DayCard_" + r.day, new Color(0.20f, 0.22f, 0.36f));
+                UIFactory.Place((RectTransform)card.transform, new Vector2(0.5f, 0.5f), pos[i], new Vector2(cardW, 195));
+
+                var dayTitle = UIFactory.Label(card.transform, r.day == 7 ? "DAY 7 - GRAND PRIZE" : "DAY " + r.day, 26, UIFactory.Accent);
+                UIFactory.Place((RectTransform)dayTitle.transform, new Vector2(0.5f, 1), new Vector2(0, -10), new Vector2(cardW - 20, 32), new Vector2(0.5f, 1));
+
+                var icon = UIFactory.Image(card.transform, "Icon", SpriteLibrary.Get(r.iconSprite), Color.white);
+                UIFactory.Place((RectTransform)icon.transform, new Vector2(0.5f, 1), new Vector2(0, -44), new Vector2(44, 44), new Vector2(0.5f, 1));
+
+                var rewardLbl = UIFactory.Label(card.transform, r.label, r.day == 7 ? 21 : 23, Color.white, TextAnchor.MiddleCenter);
+                UIFactory.Place((RectTransform)rewardLbl.transform, new Vector2(0.5f, 0), new Vector2(0, 44), new Vector2(cardW - 24, 62), new Vector2(0.5f, 0));
+
+                var status = UIFactory.Label(card.transform, "", 20, UIFactory.Good);
+                UIFactory.Place((RectTransform)status.transform, new Vector2(0.5f, 0), new Vector2(0, 10), new Vector2(cardW - 24, 28), new Vector2(0.5f, 0));
+
+                dailyCards.Add(new DailyCard { reward = r, bg = card, status = status });
+            }
+
+            dailyClaimBtn = UIFactory.MakeButton(panel.transform, "CLAIM", new Color(0.2f, 0.7f, 0.3f), () => gm.ClaimDailyLoginReward(out _), new Vector2(400, 96), 42);
+            UIFactory.Place((RectTransform)dailyClaimBtn.transform, new Vector2(0.5f, 0), new Vector2(-190, 36), new Vector2(400, 96));
+            var close = UIFactory.MakeButton(panel.transform, "CLOSE", UIFactory.Panel, HideDailyRewards, new Vector2(300, 96), 40);
+            UIFactory.Place((RectTransform)close.transform, new Vector2(0.5f, 0), new Vector2(250, 36), new Vector2(300, 96));
+
+            dailyRewardOverlay.gameObject.SetActive(false);
+        }
+
+        public void ShowDailyRewards()
+        {
+            if (dailyRewardOverlay == null) return;
+            RefreshDailyRewardUI();
+            dailyRewardOverlay.SetAsLastSibling();
+            dailyRewardOverlay.gameObject.SetActive(true);
+        }
+
+        public void HideDailyRewards()
+        {
+            if (dailyRewardOverlay == null || !dailyRewardOverlay.gameObject.activeSelf) return;
+            dailyRewardOverlay.gameObject.SetActive(false);
+            overlayClosedFrame = Time.frameCount;
+        }
+
+        public void RefreshDailyRewardUI()
+        {
+            SaveData.Current.GetDailyLoginState(out int claimedCount, out int nextDayIndex, out bool canClaimToday);
+
+            if (dailyRewardBtn != null)
+            {
+                var img = (Image)dailyRewardBtn.targetGraphic;
+                if (canClaimToday)
+                {
+                    UIFactory.SetButtonLabel(dailyRewardBtn, "DAILY REWARD (DAY " + (nextDayIndex + 1) + "!)");
+                    if (img != null) img.color = new Color(0.2f, 0.72f, 0.32f);
+                }
+                else
+                {
+                    UIFactory.SetButtonLabel(dailyRewardBtn, "DAILY REWARDS (DONE)");
+                    if (img != null) img.color = UIFactory.Panel;
+                }
+            }
+
+            if (dailyStatusText != null)
+            {
+                dailyStatusText.text = canClaimToday
+                    ? "Day " + (nextDayIndex + 1) + " reward ready to claim!"
+                    : "Day " + claimedCount + "/7 claimed today. Come back tomorrow!";
+                dailyStatusText.color = canClaimToday ? UIFactory.Good : new Color(0.82f, 0.9f, 1f);
+            }
+
+            if (dailyClaimBtn != null)
+            {
+                dailyClaimBtn.interactable = canClaimToday;
+                dailyClaimBtn.targetGraphic.color = canClaimToday ? new Color(0.2f, 0.72f, 0.32f) : new Color(0.35f, 0.35f, 0.45f);
+                UIFactory.SetButtonLabel(dailyClaimBtn, canClaimToday ? "CLAIM DAY " + (nextDayIndex + 1) : "CLAIMED TODAY");
+            }
+
+            for (int i = 0; i < dailyCards.Count; i++)
+            {
+                var c = dailyCards[i];
+                bool claimed = i < claimedCount;
+                bool isToday = canClaimToday && i == nextDayIndex;
+                if (claimed)
+                {
+                    c.bg.color = new Color(0.16f, 0.36f, 0.24f);
+                    c.status.text = "CLAIMED";
+                    c.status.color = UIFactory.Good;
+                }
+                else if (isToday)
+                {
+                    c.bg.color = new Color(0.32f, 0.30f, 0.56f);
+                    c.status.text = "TODAY!";
+                    c.status.color = UIFactory.Accent;
+                }
+                else
+                {
+                    c.bg.color = c.reward.day == 7 ? new Color(0.30f, 0.20f, 0.40f) : new Color(0.19f, 0.21f, 0.34f);
+                    c.status.text = "DAY " + c.reward.day;
+                    c.status.color = new Color(0.7f, 0.78f, 0.92f);
+                }
             }
         }
 
@@ -515,14 +645,14 @@ namespace TurtleBlaster
         }
 
         // =====================================================================
-        // Test-mode rewarded & interstitial ad + purchase dialogs (Mock services)
+        // Test-mode rewarded ad & purchase dialogs (Mock services)
         // =====================================================================
         void BuildAdOverlay(Transform parent)
         {
             adOverlay = FullScreen(parent, "MockAd", new Color(0.02f, 0.02f, 0.05f, 0.96f));
-            adTitle = UIFactory.Label(adOverlay, "TEST AD", 120, Color.white);
+            adTitle = UIFactory.Label(adOverlay, "TEST REWARDED AD", 120, Color.white);
             UIFactory.Place((RectTransform)adTitle.transform, new Vector2(0.5f, 0.68f), Vector2.zero, new Vector2(1500, 170));
-            adSub = UIFactory.Label(adOverlay, "Ad placeholder - replace MockAdService with a real ad SDK", 34, new Color(0.8f, 0.85f, 1f));
+            adSub = UIFactory.Label(adOverlay, "Rewarded ad placeholder - replace MockAdService with a real ad SDK", 34, new Color(0.8f, 0.85f, 1f));
             UIFactory.Place((RectTransform)adSub.transform, new Vector2(0.5f, 0.55f), Vector2.zero, new Vector2(1600, 50));
             adCountdown = UIFactory.Label(adOverlay, "", 56, UIFactory.Accent);
             UIFactory.Place((RectTransform)adCountdown.transform, new Vector2(0.5f, 0.42f), Vector2.zero, new Vector2(1200, 80));
@@ -534,16 +664,14 @@ namespace TurtleBlaster
             adOverlay.gameObject.SetActive(false);
         }
 
-        public void ShowMockAd(string placement, Action<bool> onComplete, bool isInterstitial = false)
+        public void ShowMockAd(string placement, Action<bool> onComplete)
         {
             adCallback = onComplete;
             adLeft = 3f;
             adClaimBtn.interactable = false;
-            if (adTitle != null) adTitle.text = isInterstitial ? "TEST INTERSTITIAL AD" : "TEST REWARDED AD";
-            if (adSub != null) adSub.text = isInterstitial
-                ? "Interstitial ad placeholder - replace MockAdService with a real ad SDK"
-                : "Rewarded ad placeholder - replace MockAdService with a real ad SDK";
-            UIFactory.SetButtonLabel(adClaimBtn, isInterstitial ? "CONTINUE (+1 ENERGY)" : "CLAIM REWARD");
+            if (adTitle != null) adTitle.text = "TEST REWARDED AD";
+            if (adSub != null) adSub.text = "Rewarded ad placeholder - replace MockAdService with a real ad SDK";
+            UIFactory.SetButtonLabel(adClaimBtn, placement == "energy_refill" ? "CLAIM (+1 ENERGY)" : "CLAIM REWARD");
             adOverlay.SetAsLastSibling();
             adOverlay.gameObject.SetActive(true);
         }

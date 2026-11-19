@@ -18,14 +18,14 @@ namespace TurtleBlaster
         RectTransform hud, menu, garage, summary, pause, popups;
 
         // hud widgets
-        Text distanceText, scoreText, comboText, missionHudText, coinText, partText, boostBanner, shieldText;
+        Text distanceText, scoreText, comboText, missionHudText, zoneHudText, coinText, partText, boostBanner, shieldText;
         Image fuelFill, stuntFill;
         RectTransform touchRoot;
 
         // menu widgets
         Text bestText, menuMissionText, menuWallet;
         Text menuEnergyText, menuEnergyTimerText;
-        Button menuEnergyAdBtn;
+        Button menuEnergyAdBtn, dailyRewardBtn;
         Button sfxBtn, musicBtn;
 
         // garage widgets
@@ -179,6 +179,7 @@ namespace TurtleBlaster
             if (garage != null && garage.gameObject.activeSelf) RefreshGarage();
             RefreshExtrasWallet(w);
             RefreshEnergyUI();
+            RefreshDailyRewardUI();
         }
 
         public void Popup(string text, Color color, int size = 64)
@@ -216,6 +217,8 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)comboText.transform, new Vector2(0, 1), new Vector2(44, -158), new Vector2(520, 50));
             missionHudText = UIFactory.Label(hud, "", 28, new Color(0.85f, 0.92f, 1f), TextAnchor.UpperLeft);
             UIFactory.Place((RectTransform)missionHudText.transform, new Vector2(0, 1), new Vector2(44, -206), new Vector2(680, 44));
+            zoneHudText = UIFactory.Label(hud, "SUNNY MEADOW", 24, UIFactory.Good, TextAnchor.UpperLeft);
+            UIFactory.Place((RectTransform)zoneHudText.transform, new Vector2(0, 1), new Vector2(44, -248), new Vector2(420, 36));
 
             // fuel + stunt bars (top centre)
             var fuelLabel = UIFactory.Label(hud, "FUEL", 30, Color.white, TextAnchor.MiddleRight);
@@ -255,12 +258,12 @@ namespace TurtleBlaster
             var orange = new Color(1f, 0.55f, 0.1f, 0.45f);
 
             // Left thumb: vertical axis (Pitch Up / Pitch Down)
-            TouchButton("Up", "THRUST  [W/Up]", "ui_arrow", false, false, blue, new Vector2(0, 0), new Vector2(50, 290), v => GameInput.TouchUp = v);
-            TouchButton("Down", "SLAM  [S/Down]", "ui_arrow", true, false, blue, new Vector2(0, 0), new Vector2(50, 50), v => GameInput.TouchDown = v);
+            TouchButton("Up", "THRUST", "ui_arrow", false, false, blue, new Vector2(0, 0), new Vector2(50, 290), v => GameInput.TouchUp = v);
+            TouchButton("Down", "SLAM", "ui_arrow", true, false, blue, new Vector2(0, 0), new Vector2(50, 50), v => GameInput.TouchDown = v);
             // Right thumb: horizontal axis (Backflip / Frontflip)
-            TouchButton("Jump", "JUMP [Space]", "ui_arrow", false, false, new Color(0.3f, 0.8f, 0.4f, 0.45f), new Vector2(1, 0), new Vector2(-50, 290), v => { if (v) GameInput.TouchJump = true; });
-            TouchButton("Back", "BACKFLIP [A/Left]", "ui_flip", false, false, orange, new Vector2(1, 0), new Vector2(-300, 50), v => GameInput.TouchLeft = v);
-            TouchButton("Front", "FRONTFLIP [D/Right]", "ui_flip", false, true, orange, new Vector2(1, 0), new Vector2(-50, 50), v => GameInput.TouchRight = v);
+            TouchButton("Jump", "JUMP", "ui_arrow", false, false, new Color(0.3f, 0.8f, 0.4f, 0.45f), new Vector2(1, 0), new Vector2(-50, 290), v => { if (v) GameInput.TouchJump = true; });
+            TouchButton("Back", "BACKFLIP", "ui_flip", false, false, orange, new Vector2(1, 0), new Vector2(-300, 50), v => GameInput.TouchLeft = v);
+            TouchButton("Front", "FRONTFLIP", "ui_flip", false, true, orange, new Vector2(1, 0), new Vector2(-50, 50), v => GameInput.TouchRight = v);
         }
 
         void TouchButton(string name, string caption, string icon, bool flipY, bool flipX, Color color,
@@ -308,6 +311,9 @@ namespace TurtleBlaster
 
             if (p != null)
             {
+                var biome = LevelBiomes.Get(LevelBiomes.GetIndex(p.transform.position.x));
+                zoneHudText.text = biome.name.ToUpper();
+                zoneHudText.color = biome.bannerColor;
                 fuelFill.fillAmount = Mathf.Lerp(fuelFill.fillAmount, p.Fuel01, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
                 fuelFill.color = p.Fuel01 < 0.25f ? UIFactory.Bad : UIFactory.Good;
                 stuntFill.fillAmount = Mathf.Lerp(stuntFill.fillAmount, p.Stunt01, 1f - Mathf.Exp(-14f * Time.unscaledDeltaTime));
@@ -360,9 +366,6 @@ namespace TurtleBlaster
             menuWallet = UIFactory.Label(menu, "", 44, Color.white, TextAnchor.UpperRight);
             UIFactory.Place((RectTransform)menuWallet.transform, new Vector2(1, 1), new Vector2(-40, -30), new Vector2(800, 60));
 
-            var hint = UIFactory.Label(menu, "Controls:  W/S = Thrust/Slam   A/D = Flips   Space = Jump", 26, Color.white);
-            UIFactory.Place((RectTransform)hint.transform, new Vector2(0.5f, 0), new Vector2(0, 8), new Vector2(1800, 36));
-
             sfxBtn = UIFactory.MakeButton(menu, "SFX ON", UIFactory.Panel, () => { var s = SaveData.Current; s.sfxOn = !s.sfxOn; s.Save(); }, new Vector2(230, 80), 32);
             UIFactory.Place((RectTransform)sfxBtn.transform, new Vector2(1, 1), new Vector2(-280, -110), new Vector2(230, 70));
             musicBtn = UIFactory.MakeButton(menu, "MUSIC ON", UIFactory.Panel, () => { var s = SaveData.Current; s.musicOn = !s.musicOn; s.Save(); }, new Vector2(230, 80), 32);
@@ -379,6 +382,12 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)menuEnergyTimerText.transform, new Vector2(0, 1), new Vector2(20, -58), new Vector2(330, 32));
             menuEnergyAdBtn = UIFactory.MakeButton(eBox.transform, "+1 ENERGY (AD)", new Color(0.85f, 0.55f, 0.1f), () => gm.WatchAdForEnergy(), new Vector2(334, 48), 24);
             UIFactory.Place((RectTransform)menuEnergyAdBtn.transform, new Vector2(0.5f, 0), new Vector2(0, 12), new Vector2(334, 48));
+
+            dailyRewardBtn = UIFactory.MakeButton(menu, "DAILY REWARDS", new Color(0.2f, 0.7f, 0.3f), ShowDailyRewards, new Vector2(370, 74), 26);
+            UIFactory.Place((RectTransform)dailyRewardBtn.transform, new Vector2(0, 1), new Vector2(36, -190), new Vector2(370, 74));
+
+            var testNotifBtn = UIFactory.MakeButton(menu, "TEST NOTIF (10s)", new Color(0.24f, 0.34f, 0.56f), () => gm.SendTestNotification(10), new Vector2(370, 56), 24);
+            UIFactory.Place((RectTransform)testNotifBtn.transform, new Vector2(0, 1), new Vector2(36, -278), new Vector2(370, 56));
         }
 
         // =====================================================================

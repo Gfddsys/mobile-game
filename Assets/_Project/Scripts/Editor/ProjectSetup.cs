@@ -173,6 +173,25 @@ namespace TurtleBlaster.EditorTools
             Debug.Log("[TurtleBlaster] Energy drained to 0/5.");
         }
 
+        [MenuItem("Turtle Blaster/Debug/Advance Login Day (+1 Day)")]
+        public static void AdvanceLoginDay()
+        {
+            var s = SaveData.Current;
+            if (s.lastLoginClaimDay > 0) s.lastLoginClaimDay -= 1;
+            s.Save();
+            Debug.Log("[TurtleBlaster] Advanced daily login by +1 day.");
+        }
+
+        [MenuItem("Turtle Blaster/Debug/Reset Login Streak")]
+        public static void ResetLoginStreak()
+        {
+            var s = SaveData.Current;
+            s.loginStreak = 0;
+            s.lastLoginClaimDay = 0;
+            s.Save();
+            Debug.Log("[TurtleBlaster] Daily login streak reset.");
+        }
+
         [MenuItem("Turtle Blaster/Build/Android APK")]
         public static void BuildAndroid()
         {

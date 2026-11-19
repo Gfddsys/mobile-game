@@ -57,9 +57,13 @@ namespace TurtleBlaster
         BoxCollider2D deck, hurtBox, feetBox;
         CircleCollider2D shell;
         SpriteRenderer turtleSr, boardSr, auraSr;
-        Transform turtleT;
+        SpriteRenderer flameOuterSr, flameCoreSr, flameGlowSr;
+        Transform turtleT, wheelRearT, wheelFrontT, thrusterT;
+        TrailRenderer turboTrail;
         ParticleSystem exhaust, sparks, dust, boostTrail;
         GameObject ragdoll;
+        readonly Vector2 thrusterBasePos = new Vector2(-1.18f, 0.3f);
+        int thrusterTier;
 
         // upgrade & skin-derived values
         float thrustMult = 1f, fuelCapacity = 100f, burnMult = 1f, cruiseMult = 1f, traction = 1f, hitLossMult = 1f;
@@ -89,11 +93,17 @@ namespace TurtleBlaster
         float superTimer, stallTimer;
         float hitFlash;
 
-        // visual juice: squash & stretch + ghost afterimages
+        // visual juice: wheel spin, dynamic rider motion, squash & stretch, ghost afterimages, turbo VFX
+        float wheelSpinDeg, wheelSpinRate;
+        float turtleBobPhase, turtleLeanDeg, turtleShiftX;
         float duckScaleY = 1f;
         Vector2 squashStretch = Vector2.one;
         float ghostTimer;
+        float thrustFlame01, superVisual01, ringTimer;
+        int trailMode = -1;
+        Gradient superTrailGrad, boostTrailGrad, thrustTrailGrad;
         readonly List<(SpriteRenderer sr, float age)> ghosts = new List<(SpriteRenderer, float)>();
+        readonly List<(SpriteRenderer sr, float age, float maxScale)> turboRings = new List<(SpriteRenderer, float, float)>();
 
         // ================================================================
         // Construction
@@ -163,25 +173,72 @@ namespace TurtleBlaster
             ApplyDuck(false);
 
             // ---- visuals & skin perks ----
-            boardSr = MakeSprite("Board", "board", new Vector2(0f, 0.02f), 10);
-            MakeSprite("WheelR", "wheel", wheelRear.offset, 11);
-            MakeSprite("WheelF", "wheel", wheelFront.offset, 11);
-            string thrusterName = "thruster_" + Mathf.Clamp(save.GetLevel(UpgradeId.JetThruster), 0, 2);
-            MakeSprite("Thruster", thrusterName, new Vector2(-1.18f, 0.3f), 9);
+            boardSr = MakeSprite("Board", "board", new Vector2(0f, 0.02f), 13);
+            wheelRearT = MakeSprite("WheelR", "wheel", wheelRear.offset, 14).transform;
+            wheelFrontT = MakeSprite("WheelF", "wheel", wheelFront.offset, 14).transform;
+            thrusterTier = Mathf.Clamp(save.GetLevel(UpgradeId.JetThruster), 0, 2);
+            string thrusterName = "thruster_" + thrusterTier;
+            thrusterT = MakeSprite("Thruster", thrusterName, thrusterBasePos, 12).transform;
+            BuildTurboVfx();
             skin = SkinDatabase.Get(save.selectedSkin);
             ApplySkinPerks(skin, true);
 
-            var turtleGo = MakeSprite("TurtleSprite", "turtle", new Vector2(-0.02f, 0.56f), 12);
+            var turtleGo = MakeSprite("TurtleSprite", "turtle", new Vector2(-0.02f, 0.56f), 15);
             turtleGo.sprite = SpriteLibrary.GetTurtle(skin.id);
             turtleSr = turtleGo;
             turtleT = turtleGo.transform;
 
-            auraSr = MakeSprite("Aura", "shield_orb", new Vector2(-0.02f, 0.42f), 14);
+            auraSr = MakeSprite("Aura", "shield_orb", new Vector2(-0.02f, 0.42f), 17);
             auraSr.transform.localScale = new Vector3(2.2f, 2.2f, 1f);
             auraSr.enabled = false;
 
             BuildParticles();
             lastAngle = rb.rotation;
+        }
+
+        void BuildTurboVfx()
+        {
+            flameGlowSr = MakeChildSprite(thrusterT, "FlameGlow", "turbo_glow", new Vector2(-0.06f, 0f), 8);
+            flameOuterSr = MakeChildSprite(thrusterT, "FlameOuter", "turbo_flame", new Vector2(0.04f, 0f), 10);
+            flameCoreSr = MakeChildSprite(thrusterT, "FlameCore", "turbo_core", new Vector2(0.04f, 0f), 11);
+            flameGlowSr.enabled = false;
+            flameOuterSr.enabled = false;
+            flameCoreSr.enabled = false;
+
+            var trailGo = new GameObject("TurboTrail");
+            trailGo.transform.SetParent(thrusterT, false);
+            trailGo.transform.localPosition = new Vector3(-0.08f, 0f, 0f);
+            turboTrail = trailGo.AddComponent<TrailRenderer>();
+            turboTrail.sharedMaterial = SpriteLibrary.SpriteMaterial;
+            turboTrail.sortingOrder = 7;
+            turboTrail.minVertexDistance = 0.14f;
+            turboTrail.numCapVertices = 2;
+            turboTrail.widthCurve = AnimationCurve.Linear(0f, 1f, 1f, 0f);
+            turboTrail.emitting = false;
+
+            superTrailGrad = Gradient3Alpha(PixelCanvas.C("#ffffff"), PixelCanvas.C("#24f0ff"), PixelCanvas.C("#ff3d9a"), PixelCanvas.C("#ffd93d"), 0.85f);
+            boostTrailGrad = Gradient3Alpha(PixelCanvas.C("#ffffff"), PixelCanvas.C("#7df9ff"), PixelCanvas.C("#4dd2ff"), PixelCanvas.C("#3a86ff"), 0.65f);
+            thrustTrailGrad = Gradient3Alpha(PixelCanvas.C("#fff3a0"), PixelCanvas.C("#ff9f1c"), PixelCanvas.C("#ff5400"), PixelCanvas.C("#ff5400"), 0.60f);
+        }
+
+        static Gradient Gradient3Alpha(Color a, Color b, Color c, Color d, float startAlpha)
+        {
+            var g = new Gradient();
+            g.SetKeys(
+                new[] { new GradientColorKey(a, 0f), new GradientColorKey(b, 0.25f), new GradientColorKey(c, 0.65f), new GradientColorKey(d, 1f) },
+                new[] { new GradientAlphaKey(startAlpha, 0f), new GradientAlphaKey(startAlpha * 0.8f, 0.45f), new GradientAlphaKey(0f, 1f) });
+            return g;
+        }
+
+        static SpriteRenderer MakeChildSprite(Transform parent, string name, string sprite, Vector2 localPos, int order)
+        {
+            var go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPos;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = SpriteLibrary.Get(sprite);
+            sr.sortingOrder = order;
+            return sr;
         }
 
         void ApplySkinPerks(SkinDef s, bool initial)
@@ -222,8 +279,15 @@ namespace TurtleBlaster
             var dustGrad = Gradient2(PixelCanvas.C("#e8dcc0"), PixelCanvas.C("#c9b891"), PixelCanvas.C("#a39373"));
             dust = MakeParticles("Dust", new Vector2(0f, -0.35f), Quaternion.Euler(-90, 0, 0), 0.5f, 2.5f, 0.28f, dustGrad, 80, 70f);
 
-            var rainbow = Gradient2(PixelCanvas.C("#ff4d6d"), PixelCanvas.C("#ffd23f"), PixelCanvas.C("#4dd2ff"));
-            boostTrail = MakeParticles("BoostTrail", new Vector2(-0.9f, 0.1f), Quaternion.Euler(0, -90, 0), 0.5f, 2.2f, 0.3f, rainbow, 120, 35f);
+            var rainbow = Gradient2(PixelCanvas.C("#24f0ff"), PixelCanvas.C("#ff3d9a"), PixelCanvas.C("#ffd93d"));
+            boostTrail = MakeParticles("BoostTrail", new Vector2(-1.05f, 0.22f), Quaternion.Euler(0, -90, 0), 0.42f, 4.75f, 0.19f, rainbow, 180, 26f);
+            var btMain = boostTrail.main;
+            btMain.startSpeed = new ParticleSystem.MinMaxCurve(3.5f, 6.0f);
+            btMain.startSize = new ParticleSystem.MinMaxCurve(0.14f, 0.24f);
+            var btr = boostTrail.GetComponent<ParticleSystemRenderer>();
+            btr.renderMode = ParticleSystemRenderMode.Stretch;
+            btr.velocityScale = 0.07f;
+            btr.lengthScale = 2.8f;
         }
 
         static Gradient Gradient2(Color a, Color b, Color c)
@@ -260,7 +324,7 @@ namespace TurtleBlaster
             sz.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0, 1f, 1, 0.25f));
             var r = go.GetComponent<ParticleSystemRenderer>();
             r.sharedMaterial = SpriteLibrary.SpriteMaterial;
-            r.sortingOrder = 8;
+            r.sortingOrder = 9;
             ps.Play();
             return ps;
         }
@@ -390,7 +454,11 @@ namespace TurtleBlaster
                 rb.AddForce((Forward * cfg.thrustAccel + Up * cfg.thrustLift) * (thrustMult * rb.mass));
                 fuel = Mathf.Max(0f, fuel - cfg.thrustFuelPerSecond * burnMult * skinBurnMult * dt);
             }
-            var em = exhaust.emission; em.rateOverTime = Thrusting ? 70f : 0f;
+            var em = exhaust.emission; em.rateOverTime = SuperBoost ? (Thrusting ? 120f : 95f) : (Thrusting ? 75f : 0f);
+            var emMain = exhaust.main;
+            emMain.startColor = SuperBoost
+                ? Color.Lerp(PixelCanvas.C("#24f0ff"), PixelCanvas.C("#ffd93d"), 0.5f + 0.5f * Mathf.Sin(Time.time * 18f))
+                : Color.white;
 
             // --- ground slam (Pitch Down) ---
             if (GameInput.Down && !grounded) rb.AddForce(Vector2.down * (cfg.slamAccel * rb.mass));
@@ -426,7 +494,7 @@ namespace TurtleBlaster
                 Stunt01 = Mathf.Clamp01(superTimer / cfg.superBoostDuration);
                 if (superTimer <= 0f) EndSuperBoost();
             }
-            var bt = boostTrail.emission; bt.rateOverTime = SuperBoost ? 60f : 0f;
+            var bt = boostTrail.emission; bt.rateOverTime = SuperBoost ? 95f : (landingBoostTimer > 0.15f ? 28f : 0f);
 
             // --- grind on rails ---
             if (onRail)
@@ -473,7 +541,10 @@ namespace TurtleBlaster
 
         void Update()
         {
-            UpdateGhosts(Time.deltaTime);
+            float dt = Time.deltaTime;
+            UpdateGhosts(dt);
+            UpdateTurboRings(dt);
+            UpdateWheelSpin(dt);
             if (!Alive) return;
             if (GameInput.JumpPressed) { jumpBuffer = cfg.jumpBufferTime; GameInput.TouchJump = false; GameInput.OverrideJump = false; }
 
@@ -486,51 +557,273 @@ namespace TurtleBlaster
                 if (turtleSr != null) turtleSr.sprite = SpriteLibrary.GetTurtle(skin.id);
             }
 
-            // duck pose + squash & stretch
-            squashStretch = Vector2.Lerp(squashStretch, Vector2.one, 1f - Mathf.Exp(-14f * Time.deltaTime));
+            // duck pose + squash & stretch + dynamic riding bob/lean
+            squashStretch = Vector2.Lerp(squashStretch, Vector2.one, 1f - Mathf.Exp(-14f * dt));
             float targetY = IsDucking ? 0.6f : 1f;
-            duckScaleY = Mathf.MoveTowards(duckScaleY, targetY, Time.deltaTime * 8f);
-            float sx = squashStretch.x * (IsDucking ? 1.12f : 1f);
-            float sy = duckScaleY * squashStretch.y;
+            duckScaleY = Mathf.MoveTowards(duckScaleY, targetY, dt * 8f);
+
+            turtleBobPhase += dt * (grounded ? (4.8f + Mathf.Clamp(Speed, 0f, 22f) * 0.45f) : 3.2f);
+            float bobAmp = grounded ? (onRail ? 0.045f : 0.032f) : 0.018f;
+            float bobWave = Mathf.Sin(turtleBobPhase);
+            float tuck = (!grounded && Mathf.Abs(sFlip) > 0.1f) ? 0.94f : 1f;
+
+            float sx = squashStretch.x * (IsDucking ? 1.12f : 1f) * (1f - bobWave * (bobAmp * 0.7f)) * tuck;
+            float sy = duckScaleY * squashStretch.y * (1f + bobWave * bobAmp) * tuck;
             turtleT.localScale = new Vector3(sx, sy, 1f);
+
+            float targetLeanDeg = grounded ? Mathf.Sin(turtleBobPhase * 0.5f) * 3.0f : 0f;
+            float targetShiftX = 0f;
+            if (IsDucking)
+            {
+                targetLeanDeg = -10f;
+                targetShiftX = 0.04f;
+            }
+            else if (SuperBoost)
+            {
+                targetLeanDeg = -13f + Mathf.Sin(Time.time * 34f) * 1.6f;
+                targetShiftX = 0.07f;
+            }
+            else if (Thrusting)
+            {
+                targetLeanDeg = -7.5f;
+                targetShiftX = 0.04f;
+            }
+            else if (!grounded)
+            {
+                targetLeanDeg = Mathf.Abs(sFlip) > 0.1f
+                    ? -sFlip * 11f
+                    : Mathf.Clamp(rb.linearVelocity.y * 0.9f, -7f, 8f);
+            }
+            if (onRail) targetLeanDeg += Mathf.Sin(Time.time * 48f) * 2.2f;
+
+            float smoothK = 1f - Mathf.Exp(-14f * dt);
+            turtleLeanDeg = Mathf.LerpAngle(turtleLeanDeg, targetLeanDeg, smoothK);
+            turtleShiftX = Mathf.Lerp(turtleShiftX, targetShiftX, smoothK);
+
+            turtleT.localRotation = Quaternion.Euler(0f, 0f, turtleLeanDeg);
             // legs sit on the deck top (y = 0.18); sprite centre is 0.38 units above its feet when standing
-            turtleT.localPosition = new Vector3(-0.02f, 0.18f + 0.38f * sy, 0f);
+            turtleT.localPosition = new Vector3(-0.02f + turtleShiftX, 0.18f + 0.38f * sy, 0f);
 
             // ghost trail afterimages during SuperBoost or Perfect Landing speed boost
-            ghostTimer -= Time.deltaTime;
+            ghostTimer -= dt;
             if ((SuperBoost || landingBoostTimer > 0.15f) && ghostTimer <= 0f)
             {
                 ghostTimer = 0.045f;
                 SpawnGhost();
             }
 
+            UpdateTurboVisuals(dt);
+
             // super boost flicker / hit flash
-            if (hitFlash > 0f) hitFlash -= Time.deltaTime;
+            if (hitFlash > 0f) hitFlash -= dt;
             Color c = Color.white;
             if (skin != null && skin.rainbow) c = Color.HSVToRGB(Mathf.Repeat(Time.time * 0.35f, 1f), 0.35f, 1f);
-            if (SuperBoost) c = Color.HSVToRGB(Mathf.Repeat(Time.time * 2f, 1f), 0.45f, 1f);
+            if (SuperBoost) c = Color.Lerp(Color.white, EvaluateTurboPalette(Time.time * 1.2f), 0.45f);
             if (hitFlash > 0f && ((int)(Time.time * 20f) & 1) == 0) c = new Color(1f, 0.4f, 0.4f);
             if (shieldTimer > 0f && ((int)(Time.time * 12f) & 1) == 0) c.a = 0.35f;   // blink while shielded
             turtleSr.color = c;
             boardSr.color = c;
 
-            // visual aura for shield / safety shell / magnet
+            // visual aura for shield / safety shell / magnet / SuperBoost
             if (auraSr != null)
             {
-                bool showAura = shieldTimer > 0f || freeHits > 0 || magnetTimer > 0f;
+                bool showAura = shieldTimer > 0f || freeHits > 0 || magnetTimer > 0f || SuperBoost;
                 auraSr.enabled = showAura;
                 if (showAura)
                 {
-                    float pulse = 2.15f + Mathf.Sin(Time.time * 6f) * 0.12f;
+                    float pulse = (SuperBoost ? 2.35f : 2.15f) + Mathf.Sin(Time.time * 6f) * 0.12f;
                     auraSr.transform.localScale = new Vector3(pulse, pulse, 1f);
-                    Color ac = magnetTimer > 0f && freeHits == 0 && shieldTimer <= 0f
-                        ? new Color(1f, 0.45f, 0.75f, 0.42f)
-                        : new Color(0.35f, 0.9f, 1f, shieldTimer > 0f ? 0.65f : 0.38f);
+                    Color ac;
+                    if (shieldTimer > 0f)
+                        ac = new Color(0.35f, 0.9f, 1f, 0.65f);
+                    else if (freeHits > 0)
+                        ac = new Color(0.35f, 0.9f, 1f, 0.38f);
+                    else if (magnetTimer > 0f)
+                        ac = new Color(1f, 0.45f, 0.75f, 0.42f);
+                    else
+                    {
+                        ac = EvaluateTurboPalette(Time.time * 1.6f);
+                        ac.a = 0.32f;
+                    }
                     auraSr.color = ac;
                 }
             }
 
             AudioManager.Thrust(Thrusting);
+        }
+
+        void UpdateWheelSpin(float dt)
+        {
+            if (wheelRearT == null || wheelFrontT == null || rb == null) return;
+            float forwardSpeed = Vector2.Dot(rb.linearVelocity, Forward);
+            if (grounded || onRail || !Alive)
+            {
+                // Cap rotation below ~2200 deg/s so 60Hz rendering doesn't strobe backwards.
+                float targetRate = Mathf.Clamp(-(forwardSpeed / 0.38f) * Mathf.Rad2Deg, -2200f, 2200f);
+                wheelSpinRate = Mathf.Lerp(wheelSpinRate, targetRate, 1f - Mathf.Exp(-20f * dt));
+            }
+            else
+            {
+                wheelSpinRate *= Mathf.Exp(-0.85f * dt);
+                if (Thrusting || SuperBoost)
+                    wheelSpinRate = Mathf.Lerp(wheelSpinRate, -1800f, 1f - Mathf.Exp(-2.5f * dt));
+            }
+            wheelSpinDeg = Mathf.Repeat(wheelSpinDeg + wheelSpinRate * dt, 360f);
+            wheelRearT.localRotation = Quaternion.Euler(0f, 0f, wheelSpinDeg);
+            wheelFrontT.localRotation = Quaternion.Euler(0f, 0f, wheelSpinDeg + 47f);
+        }
+
+        void UpdateTurboVisuals(float dt)
+        {
+            float targetFlame = (Thrusting || SuperBoost) ? 1f : 0f;
+            thrustFlame01 = Mathf.MoveTowards(thrustFlame01, targetFlame, dt * (targetFlame > thrustFlame01 ? 24f : 14f));
+            superVisual01 = Mathf.MoveTowards(superVisual01, SuperBoost ? 1f : 0f, dt * 10f);
+
+            if (thrusterT != null)
+            {
+                if (thrustFlame01 > 0.02f)
+                {
+                    float vib = thrustFlame01 * (1f + superVisual01 * 0.6f);
+                    thrusterT.localPosition = thrusterBasePos + new Vector2(
+                        -0.04f * thrustFlame01 + Mathf.Sin(Time.time * 75f) * 0.014f * vib,
+                        Mathf.Cos(Time.time * 88f) * 0.016f * vib);
+                }
+                else
+                {
+                    thrusterT.localPosition = Vector2.Lerp(thrusterT.localPosition, thrusterBasePos, 1f - Mathf.Exp(-18f * dt));
+                }
+            }
+
+            bool showFlame = thrustFlame01 > 0.01f;
+            if (flameOuterSr != null)
+            {
+                flameOuterSr.enabled = showFlame;
+                flameCoreSr.enabled = showFlame;
+                flameGlowSr.enabled = showFlame;
+                if (showFlame)
+                {
+                    float flicker = 0.86f + 0.14f * Mathf.Sin(Time.time * 58f) + 0.08f * Mathf.Cos(Time.time * 91f);
+                    float tierScale = 1f + thrusterTier * 0.14f;
+                    float activeBoost = SuperBoost ? (Thrusting ? 1.85f : 1.50f) : 1f;
+                    float lenScale = tierScale * Mathf.Lerp(1f, activeBoost, superVisual01) * thrustFlame01 * flicker;
+                    float widScale = (1f + thrusterTier * 0.08f) * Mathf.Lerp(1f, SuperBoost && Thrusting ? 1.45f : 1.25f, superVisual01) * Mathf.Lerp(0.55f, 1f, thrustFlame01);
+
+                    flameOuterSr.transform.localScale = new Vector3(lenScale, widScale, 1f);
+                    flameCoreSr.transform.localScale = new Vector3(lenScale * 0.92f, widScale * 0.82f, 1f);
+                    float glowScale = (1.1f + 0.65f * superVisual01) * thrustFlame01 * (0.9f + 0.12f * flicker);
+                    flameGlowSr.transform.localScale = new Vector3(glowScale * 1.15f, glowScale, 1f);
+
+                    Color turboCol = EvaluateTurboPalette(Time.time * 1.4f);
+                    Color outerCol = Color.Lerp(PixelCanvas.C("#ff6b1a"), turboCol, superVisual01);
+                    outerCol.a = Mathf.Clamp01(thrustFlame01 * 0.95f);
+                    flameOuterSr.color = outerCol;
+
+                    Color coreCol = Color.Lerp(PixelCanvas.C("#fff6c2"), PixelCanvas.C("#ffffff"), superVisual01);
+                    coreCol.a = Mathf.Clamp01(thrustFlame01);
+                    flameCoreSr.color = coreCol;
+
+                    Color glowCol = Color.Lerp(PixelCanvas.C("#ff9f1c"), turboCol, superVisual01);
+                    glowCol.a = Mathf.Clamp01(thrustFlame01 * (0.55f + 0.3f * superVisual01));
+                    flameGlowSr.color = glowCol;
+                }
+            }
+
+            if (turboTrail != null)
+            {
+                int wantMode = SuperBoost ? 2 : (landingBoostTimer > 0.15f ? 1 : (Thrusting ? 0 : -1));
+                turboTrail.emitting = wantMode >= 0;
+                if (wantMode >= 0 && wantMode != trailMode)
+                {
+                    trailMode = wantMode;
+                    if (wantMode == 2)
+                    {
+                        turboTrail.time = 0.28f;
+                        turboTrail.widthMultiplier = 0.50f;
+                        turboTrail.colorGradient = superTrailGrad;
+                    }
+                    else if (wantMode == 1)
+                    {
+                        turboTrail.time = 0.18f;
+                        turboTrail.widthMultiplier = 0.32f;
+                        turboTrail.colorGradient = boostTrailGrad;
+                    }
+                    else
+                    {
+                        turboTrail.time = 0.13f;
+                        turboTrail.widthMultiplier = 0.24f;
+                        turboTrail.colorGradient = thrustTrailGrad;
+                    }
+                }
+            }
+
+            if (SuperBoost)
+            {
+                ringTimer -= dt;
+                if (ringTimer <= 0f)
+                {
+                    ringTimer = 0.22f;
+                    SpawnTurboRing(1.85f);
+                }
+            }
+        }
+
+        static Color EvaluateTurboPalette(float t)
+        {
+            float p = Mathf.Repeat(t, 4f);
+            int idx = Mathf.FloorToInt(p);
+            float f = p - idx;
+            Color c0 = PixelCanvas.C("#24f0ff");
+            Color c1 = PixelCanvas.C("#4d8bff");
+            Color c2 = PixelCanvas.C("#ff3d9a");
+            Color c3 = PixelCanvas.C("#ffd93d");
+            switch (idx)
+            {
+                case 0: return Color.Lerp(c0, c1, f);
+                case 1: return Color.Lerp(c1, c2, f);
+                case 2: return Color.Lerp(c2, c3, f);
+                default: return Color.Lerp(c3, c0, f);
+            }
+        }
+
+        void SpawnTurboRing(float maxScale)
+        {
+            if (thrusterT == null) return;
+            var go = new GameObject("TurboRing");
+            go.transform.SetPositionAndRotation(thrusterT.TransformPoint(new Vector3(-0.08f, 0f, 0f)), transform.rotation);
+            go.transform.localScale = new Vector3(0.55f, 0.55f, 1f);
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = SpriteLibrary.Get("turbo_ring");
+            sr.sortingOrder = 8;
+            Color rc = EvaluateTurboPalette(Time.time * 1.4f);
+            rc.a = 0.85f;
+            sr.color = rc;
+            turboRings.Add((sr, 0f, maxScale));
+        }
+
+        void UpdateTurboRings(float dt)
+        {
+            const float life = 0.26f;
+            for (int i = turboRings.Count - 1; i >= 0; i--)
+            {
+                var (sr, age, maxScale) = turboRings[i];
+                if (sr == null) { turboRings.RemoveAt(i); continue; }
+                age += dt;
+                if (age >= life)
+                {
+                    Destroy(sr.gameObject);
+                    turboRings.RemoveAt(i);
+                }
+                else
+                {
+                    float u = age / life;
+                    float sc = Mathf.Lerp(0.55f, maxScale, 1f - (1f - u) * (1f - u));
+                    sr.transform.localScale = new Vector3(sc * 0.72f, sc, 1f);
+                    var rc = sr.color;
+                    rc.a = 0.85f * (1f - u);
+                    sr.color = rc;
+                    turboRings[i] = (sr, age, maxScale);
+                }
+            }
         }
 
         void SpawnGhost()
@@ -543,7 +836,7 @@ namespace TurtleBlaster
             sr.sprite = turtleSr.sprite;
             sr.sortingOrder = 7;
             Color gc = SuperBoost
-                ? Color.HSVToRGB(Mathf.Repeat(Time.time * 2.5f, 1f), 0.7f, 1f)
+                ? EvaluateTurboPalette(Time.time * 1.5f)
                 : new Color(0.4f, 0.9f, 1f, 1f);
             gc.a = 0.48f;
             sr.color = gc;
@@ -573,11 +866,14 @@ namespace TurtleBlaster
             }
         }
 
-        void ClearGhosts()
+        void ClearEffects()
         {
             for (int i = 0; i < ghosts.Count; i++)
                 if (ghosts[i].sr != null) Destroy(ghosts[i].sr.gameObject);
             ghosts.Clear();
+            for (int i = 0; i < turboRings.Count; i++)
+                if (turboRings[i].sr != null) Destroy(turboRings[i].sr.gameObject);
+            turboRings.Clear();
         }
 
         void ApplyDuck(bool duck)
@@ -767,6 +1063,11 @@ namespace TurtleBlaster
             SuperBoost = true;
             superTimer = cfg.superBoostDuration;
             Stunt01 = 1f;
+            squashStretch = new Vector2(1.26f, 0.78f);
+            if (boostTrail != null) boostTrail.Emit(24);
+            if (sparks != null) sparks.Emit(16);
+            SpawnTurboRing(2.35f);
+            ringTimer = 0.20f;
             SuperBoostChanged?.Invoke(true);
         }
 
@@ -810,6 +1111,10 @@ namespace TurtleBlaster
             var em = exhaust.emission; em.rateOverTime = 0f;
             var bt = boostTrail.emission; bt.rateOverTime = 0f;
             var se = sparks.emission; se.rateOverTime = 0f;
+            if (flameOuterSr != null) flameOuterSr.enabled = false;
+            if (flameCoreSr != null) flameCoreSr.enabled = false;
+            if (flameGlowSr != null) flameGlowSr.enabled = false;
+            if (turboTrail != null) turboTrail.emitting = false;
             if (auraSr != null) auraSr.enabled = false;
             if (SuperBoost) { SuperBoost = false; SuperBoostChanged?.Invoke(false); }
 
@@ -821,7 +1126,7 @@ namespace TurtleBlaster
             ragdoll.transform.rotation = transform.rotation;
             var sr = ragdoll.AddComponent<SpriteRenderer>();
             sr.sprite = SpriteLibrary.GetTurtle(SkinId);
-            sr.sortingOrder = 13;
+            sr.sortingOrder = 16;
             var rrb = ragdoll.AddComponent<Rigidbody2D>();
             rrb.gravityScale = cfg.gravityScale;
             rrb.mass = 0.6f;
@@ -840,11 +1145,11 @@ namespace TurtleBlaster
             Crashed?.Invoke(cause);
         }
 
-        void OnDestroy() => ClearGhosts();
+        void OnDestroy() => ClearEffects();
 
         public void Dispose()
         {
-            ClearGhosts();
+            ClearEffects();
             if (ragdoll != null) Destroy(ragdoll);
             Destroy(gameObject);
         }

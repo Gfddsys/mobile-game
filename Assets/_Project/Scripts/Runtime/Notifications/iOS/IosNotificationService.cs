@@ -13,8 +13,10 @@ namespace TurtleBlaster
     public class IosNotificationService : INotificationService
     {
         const string EnergyFullIdentifier = "turtle_blaster_energy_full";
+        const string TestIdentifier = "turtle_blaster_test_notif";
 
         bool initialized;
+        long lastScheduledFireTicks;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void Register()
@@ -41,6 +43,14 @@ namespace TurtleBlaster
         public void ScheduleEnergyFull(DateTime fireTimeUtc, int maxEnergy)
         {
             Initialize();
+            DateTime minFireUtc = DateTime.UtcNow.AddSeconds(2);
+            if (fireTimeUtc < minFireUtc) fireTimeUtc = minFireUtc;
+            if (lastScheduledFireTicks != 0 &&
+                Math.Abs(fireTimeUtc.Ticks - lastScheduledFireTicks) < TimeSpan.TicksPerSecond * 2)
+            {
+                return;
+            }
+
             try
             {
                 iOSNotificationCenter.RemoveScheduledNotification(EnergyFullIdentifier);
@@ -60,6 +70,7 @@ namespace TurtleBlaster
                     }
                 };
                 iOSNotificationCenter.ScheduleNotification(notification);
+                lastScheduledFireTicks = fireTimeUtc.Ticks;
             }
             catch (Exception e)
             {
@@ -67,8 +78,38 @@ namespace TurtleBlaster
             }
         }
 
+        public void ScheduleTestNotification(int delaySeconds = 10)
+        {
+            Initialize();
+            int secs = Math.Max(1, delaySeconds);
+            try
+            {
+                iOSNotificationCenter.RemoveScheduledNotification(TestIdentifier);
+                iOSNotificationCenter.RemoveDeliveredNotification(TestIdentifier);
+
+                var notification = new iOSNotification
+                {
+                    Identifier = TestIdentifier,
+                    Title = "Turtle Blaster Test",
+                    Body = "Local notifications are working! (" + secs + "s test)",
+                    ShowInForeground = true,
+                    Trigger = new iOSNotificationTimeIntervalTrigger
+                    {
+                        TimeInterval = TimeSpan.FromSeconds(secs),
+                        Repeats = false
+                    }
+                };
+                iOSNotificationCenter.ScheduleNotification(notification);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Notifications] iOS test schedule failed: " + e.Message);
+            }
+        }
+
         public void CancelEnergyFull()
         {
+            lastScheduledFireTicks = 0;
             try
             {
                 iOSNotificationCenter.RemoveScheduledNotification(EnergyFullIdentifier);

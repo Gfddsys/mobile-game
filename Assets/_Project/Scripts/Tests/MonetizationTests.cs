@@ -277,7 +277,7 @@ namespace TurtleBlaster.Tests
         }
 
         [UnityTest]
-        public IEnumerator Energy_InterstitialAdGrantsPlusOneUpToMax()
+        public IEnumerator Energy_RewardedAdGrantsPlusOneUpToMax()
         {
             var gm = new GameObject("GameManager").AddComponent<GameManager>();
             yield return null;
@@ -289,7 +289,7 @@ namespace TurtleBlaster.Tests
             gm.WatchAdForEnergy(ok => { adOk = ok; adDone = true; });
             yield return WaitFor(() => adDone, 2f);
             Assert.IsTrue(adOk);
-            Assert.AreEqual(4, SaveData.Current.energy, "interstitial ad adds +1 energy");
+            Assert.AreEqual(4, SaveData.Current.energy, "rewarded ad adds +1 energy");
 
             MockAdService.AutoResult = false;
             adDone = false; adOk = true;
@@ -336,7 +336,7 @@ namespace TurtleBlaster.Tests
             double secondMinutes = (notif.ScheduledFireTimeUtc - System.DateTime.UtcNow).TotalMinutes;
             Assert.That(secondMinutes, Is.InRange(29.5, 30.1));
 
-            // Watch interstitial ad (+1 energy -> 4/5) -> full moves 15m earlier (~15m)
+            // Watch rewarded ad (+1 energy -> 4/5) -> full moves 15m earlier (~15m)
             bool done = false;
             gm.WatchAdForEnergy(_ => done = true);
             yield return WaitFor(() => done, 2f);
@@ -344,12 +344,82 @@ namespace TurtleBlaster.Tests
             double afterAdMinutes = (notif.ScheduledFireTimeUtc - System.DateTime.UtcNow).TotalMinutes;
             Assert.That(afterAdMinutes, Is.InRange(14.5, 15.1));
 
-            // Watch interstitial ad again (+1 energy -> 5/5) -> notification cancelled
+            // Watch rewarded ad again (+1 energy -> 5/5) -> notification cancelled
             done = false;
             gm.WatchAdForEnergy(_ => done = true);
             yield return WaitFor(() => done, 2f);
             Assert.AreEqual(5, SaveData.Current.energy);
             Assert.IsFalse(notif.IsScheduled, "notification is cancelled once energy is full");
+        }
+
+        // ---------------- 3 level biomes & 7-day login rewards ----------------
+
+        [Test]
+        public void LevelBiomes_CyclesThroughThreeDistinctVariants()
+        {
+            Assert.AreEqual(3, LevelBiomes.Count);
+            Assert.AreEqual(0, LevelBiomes.GetIndex(0f));
+            Assert.AreEqual(1, LevelBiomes.GetIndex(250f));
+            Assert.AreEqual(2, LevelBiomes.GetIndex(500f));
+            Assert.AreEqual(0, LevelBiomes.GetIndex(750f));
+
+            var names = new System.Collections.Generic.HashSet<string>();
+            var colors = new System.Collections.Generic.HashSet<Color32>();
+            var fallbackSq = SpriteLibrary.Get("square");
+
+            for (int i = 0; i < LevelBiomes.Count; i++)
+            {
+                var b = LevelBiomes.Get(i);
+                Assert.IsTrue(names.Add(b.name), "biome name should be unique");
+                Assert.IsTrue(colors.Add(b.topA), "biome ground top color should be distinct");
+
+                Assert.AreNotSame(fallbackSq, SpriteLibrary.Get(b.skySprite), b.skySprite);
+                Assert.AreNotSame(fallbackSq, SpriteLibrary.Get(b.farSprite), b.farSprite);
+                Assert.AreNotSame(fallbackSq, SpriteLibrary.Get(b.nearSprite), b.nearSprite);
+                Assert.AreNotSame(fallbackSq, SpriteLibrary.Get(b.coneSprite), b.coneSprite);
+                Assert.AreNotSame(fallbackSq, SpriteLibrary.Get(b.boulderSprite), b.boulderSprite);
+                Assert.IsNotNull(b.decorSprites);
+                Assert.Greater(b.decorSprites.Length, 0);
+                foreach (var d in b.decorSprites) Assert.AreNotSame(fallbackSq, SpriteLibrary.Get(d), d);
+            }
+        }
+
+        [Test]
+        public void DailyLogin_SevenDayRewardsStreakResetAndDuplicatePrevention()
+        {
+            var save = SaveData.Current;
+            var d0 = new System.DateTime(2026, 11, 1, 9, 0, 0);
+            int expectedCoins = 0, expectedParts = 0;
+
+            for (int day = 0; day < 7; day++)
+            {
+                var cur = d0.AddDays(day);
+                Assert.IsTrue(save.CanClaimDailyLogin(cur), "day " + (day + 1) + " should be claimable");
+                if (day == 3 || day == 6) Assert.IsTrue(save.TryConsumeEnergy(2, cur));
+
+                Assert.IsTrue(save.TryClaimDailyLogin(out var reward, cur));
+                Assert.AreEqual(day + 1, reward.day);
+                expectedCoins += reward.coins;
+                expectedParts += reward.parts;
+
+                Assert.AreEqual(expectedCoins, save.coins);
+                Assert.AreEqual(expectedParts, save.parts);
+                if (reward.fullEnergy) Assert.AreEqual(SaveData.MaxEnergy, save.energy, "fullEnergy day refills energy");
+
+                Assert.IsFalse(save.CanClaimDailyLogin(cur), "cannot claim twice on same day");
+                Assert.IsFalse(save.TryClaimDailyLogin(out _, cur));
+            }
+
+            // Day 8 consecutive loops back to Day 1
+            var day8 = d0.AddDays(7);
+            Assert.IsTrue(save.TryClaimDailyLogin(out var r8, day8));
+            Assert.AreEqual(1, r8.day);
+
+            // Skipping a day resets streak back to Day 1
+            Assert.IsTrue(save.TryClaimDailyLogin(out var rSkip, day8.AddDays(1)));
+            Assert.AreEqual(2, rSkip.day);
+            Assert.IsTrue(save.TryClaimDailyLogin(out var rReset, day8.AddDays(3)));
+            Assert.AreEqual(1, rReset.day, "missing a day resets streak back to Day 1");
         }
     }
 }

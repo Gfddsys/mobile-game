@@ -36,6 +36,7 @@ namespace TurtleBlaster
         float startX;
         float menuResetTimer;
         float energyCheckTimer;
+        int currentBiome = -1;
         Texture2D snapshot;
         Coroutine dyingRoutine;
         readonly System.Collections.Generic.List<GameObject> owned = new System.Collections.Generic.List<GameObject>();
@@ -164,6 +165,15 @@ namespace TurtleBlaster
                     Stats.topSpeed = Mathf.Max(Stats.topSpeed, Player.Speed);
                     Stats.score = Mathf.FloorToInt(dist * cfg.pointsPerMeter) + bonusScore + Mathf.FloorToInt(grindScore);
 
+                    int b = LevelBiomes.GetIndex(Player.transform.position.x);
+                    if (b != currentBiome)
+                    {
+                        currentBiome = b;
+                        var def = LevelBiomes.Get(b);
+                        UI.Popup(def.name.ToUpper() + "!", def.bannerColor, 74);
+                        AudioManager.Sfx("perfect");
+                    }
+
                     if (dist > 5f)
                     {
                         var m = SaveData.Current.GetCurrentMission();
@@ -242,6 +252,13 @@ namespace TurtleBlaster
                 Services.Notifications.ScheduleEnergyFull(System.DateTime.UtcNow + save.GetTimeUntilFullEnergy(), SaveData.MaxEnergy);
         }
 
+        public void SendTestNotification(int delaySeconds = 10)
+        {
+            int secs = Mathf.Max(1, delaySeconds);
+            Services.Notifications.ScheduleTestNotification(secs);
+            if (UI != null) UI.Popup("TEST NOTIF IN " + secs + "s!", UIFactory.Accent, 56);
+        }
+
         public void StartRun(int seed = -1) => TryStartRun(seed);
 
         public bool TryStartRun(int seed = -1)
@@ -261,6 +278,7 @@ namespace TurtleBlaster
             Stats = new RunStats();
             Combo = 0; bonusScore = 0; grindScore = 0f;
             startX = Player.transform.position.x;
+            currentBiome = LevelBiomes.GetIndex(startX);
             State = GameState.Playing;
             UI.ShowHud();
             AudioManager.StartMusic();
@@ -531,9 +549,9 @@ namespace TurtleBlaster
 
         public bool CanDoubleCoins => State == GameState.Summary && !Stats.coinsDoubled && Stats.coins > 0 && Services.Ads.IsRewardedReady;
 
-        public bool CanWatchEnergyAd => SaveData.Current.energy < SaveData.MaxEnergy && Services.Ads.IsInterstitialReady;
+        public bool CanWatchEnergyAd => SaveData.Current.energy < SaveData.MaxEnergy && Services.Ads.IsRewardedReady;
 
-        /// <summary>Watches an interstitial ad to refill +1 energy (up to MaxEnergy = 5).</summary>
+        /// <summary>Watches a rewarded ad to refill +1 energy (up to MaxEnergy = 5).</summary>
         public void WatchAdForEnergy(System.Action<bool> onComplete = null)
         {
             SaveData.Current.RefreshEnergy();
@@ -544,14 +562,14 @@ namespace TurtleBlaster
                 onComplete?.Invoke(false);
                 return;
             }
-            if (!Services.Ads.IsInterstitialReady)
+            if (!Services.Ads.IsRewardedReady)
             {
                 if (UI != null) UI.Popup("AD NOT READY YET", UIFactory.Bad, 52);
                 AudioManager.Sfx("deny");
                 onComplete?.Invoke(false);
                 return;
             }
-            Services.Ads.ShowInterstitial("energy_refill", ok =>
+            Services.Ads.ShowRewarded("energy_refill", ok =>
             {
                 if (this == null) { onComplete?.Invoke(false); return; }
                 if (ok)
@@ -568,6 +586,24 @@ namespace TurtleBlaster
                 if (UI != null) UI.RefreshEnergyUI();
                 onComplete?.Invoke(ok);
             });
+        }
+
+        public bool ClaimDailyLoginReward(out LoginRewardDef reward, System.DateTime? nowLocal = null)
+        {
+            if (!SaveData.Current.TryClaimDailyLogin(out reward, nowLocal))
+            {
+                AudioManager.Sfx("deny");
+                return false;
+            }
+            SyncEnergyNotification();
+            AudioManager.Sfx("buy");
+            if (UI != null)
+            {
+                UI.Popup("DAY " + reward.day + " CLAIMED!", UIFactory.Accent, 68);
+                UI.RefreshDailyRewardUI();
+                UI.RefreshEnergyUI();
+            }
+            return true;
         }
 
         /// <summary>Summary screen: watch a rewarded ad to double the coins earned this run.</summary>
