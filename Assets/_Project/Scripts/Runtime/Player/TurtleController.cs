@@ -188,8 +188,8 @@ namespace TurtleBlaster
             turtleSr = turtleGo;
             turtleT = turtleGo.transform;
 
-            auraSr = MakeSprite("Aura", "shield_orb", new Vector2(-0.02f, 0.42f), 17);
-            auraSr.transform.localScale = new Vector3(2.2f, 2.2f, 1f);
+            auraSr = MakeSprite("Aura", "shield_orb", new Vector2(-0.04f, 0.58f), 9);
+            auraSr.transform.localScale = new Vector3(2.45f, 2.05f, 1f);
             auraSr.enabled = false;
 
             BuildParticles();
@@ -631,19 +631,26 @@ namespace TurtleBlaster
                 auraSr.enabled = showAura;
                 if (showAura)
                 {
-                    float pulse = (SuperBoost ? 2.35f : 2.15f) + Mathf.Sin(Time.time * 6f) * 0.12f;
-                    auraSr.transform.localScale = new Vector3(pulse, pulse, 1f);
+                    auraSr.transform.localPosition = new Vector3(turtleT.localPosition.x - 0.02f, turtleT.localPosition.y + 0.02f, 0f);
+                    auraSr.transform.localRotation = Quaternion.Euler(0f, 0f, turtleLeanDeg * 0.45f);
+
+                    float wave = Mathf.Sin(Time.time * 6f) * 0.08f;
+                    float duckFactor = Mathf.Lerp(0.75f, 1f, Mathf.InverseLerp(0.6f, 1f, duckScaleY));
+                    float sxAura = (SuperBoost ? 2.65f : (shieldTimer > 0f ? 2.55f : 2.45f)) + wave;
+                    float syAura = ((SuperBoost ? 2.25f : (shieldTimer > 0f ? 2.15f : 2.05f)) + wave) * duckFactor;
+                    auraSr.transform.localScale = new Vector3(sxAura, syAura, 1f);
+
                     Color ac;
                     if (shieldTimer > 0f)
-                        ac = new Color(0.35f, 0.9f, 1f, 0.65f);
+                        ac = new Color(0.35f, 0.92f, 1f, 0.72f);
                     else if (freeHits > 0)
-                        ac = new Color(0.35f, 0.9f, 1f, 0.38f);
+                        ac = new Color(0.35f, 0.92f, 1f, 0.46f);
                     else if (magnetTimer > 0f)
-                        ac = new Color(1f, 0.45f, 0.75f, 0.42f);
+                        ac = new Color(1f, 0.45f, 0.78f, 0.52f);
                     else
                     {
                         ac = EvaluateTurboPalette(Time.time * 1.6f);
-                        ac.a = 0.32f;
+                        ac.a = 0.45f;
                     }
                     auraSr.color = ac;
                 }
@@ -947,7 +954,10 @@ namespace TurtleBlaster
             if (!Alive) return;
             if (other.TryGetComponent<Pickup>(out var p))
             {
+                if (p.collected) return;
+                p.collected = true;
                 PickedUp?.Invoke(p.type);
+                p.gameObject.SetActive(false);
                 Destroy(p.gameObject);
             }
         }

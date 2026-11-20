@@ -108,9 +108,19 @@ namespace TurtleBlaster.EditorTools
         }
     }
 
-    /// <summary>Automatic import settings for game sprites (see ArtTools).</summary>
+    /// <summary>Automatic import settings for game sprites and pixel fonts (see ArtTools).</summary>
     public class ArtImportPostprocessor : AssetPostprocessor
     {
+        void OnPreprocessAsset()
+        {
+            string path = assetPath.Replace('\\', '/');
+            if (!path.StartsWith("Assets/_Project/Resources/Fonts/")) return;
+            var fontImporter = assetImporter as TrueTypeFontImporter;
+            if (fontImporter == null) return;
+            fontImporter.fontRenderingMode = FontRenderingMode.HintedRaster;
+            fontImporter.includeFontData = true;
+        }
+
         void OnPreprocessTexture()
         {
             string path = assetPath.Replace('\\', '/');

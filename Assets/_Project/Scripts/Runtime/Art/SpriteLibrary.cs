@@ -389,52 +389,24 @@ namespace TurtleBlaster
             g["turbo_ring"] = TurboRing;
 
             // ----- UI -----
-            g["ui_panel"] = () =>
-            {
-                var c = new PixelCanvas(12, 12);
-                c.Rect(0, 0, 12, 12, K);
-                c.Rect(2, 2, 8, 8, White);
-                c.Rect(1, 1, 10, 10, PixelCanvas.C("#cfd8e8"));
-                c.Rect(2, 2, 8, 8, White);
-                // cut corners
-                c.Set(0, 0, PixelCanvas.Clear); c.Set(11, 0, PixelCanvas.Clear);
-                c.Set(0, 11, PixelCanvas.Clear); c.Set(11, 11, PixelCanvas.Clear);
-                return c.ToSprite(100f, null, new Vector4(4, 4, 4, 4));
-            };
-
-            g["ui_arrow"] = () =>
-            {
-                var c = new PixelCanvas(20, 20);
-                c.Triangle(new Vector2(10, 18), new Vector2(1, 6), new Vector2(19, 6), White);
-                c.Rect(6, 1, 8, 6, White);
-                c.Outline(K);
-                return c.ToSprite(100f);
-            };
-
-            g["ui_flip"] = () =>
-            {
-                var c = new PixelCanvas(24, 24);
-                for (int j = 0; j < 24; j++)
-                    for (int i = 0; i < 24; i++)
-                    {
-                        float dx = i + 0.5f - 12f, dy = j + 0.5f - 12f;
-                        float r = Mathf.Sqrt(dx * dx + dy * dy);
-                        float ang = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
-                        if (r > 6f && r < 9.5f && !(ang > 20f && ang < 75f)) c.Set(i, j, White);
-                    }
-                // arrow head at the end of the arc (angle ~20 deg)
-                c.Triangle(new Vector2(20, 17), new Vector2(22.5f, 7), new Vector2(11.5f, 11), White);
-                c.Outline(K);
-                return c.ToSprite(100f);
-            };
-
-            g["ui_circle"] = () =>
-            {
-                var c = new PixelCanvas(32, 32);
-                c.Ellipse(16, 16, 15.5f, 15.5f, White);
-                c.Outline(K);
-                return c.ToSprite(100f);
-            };
+            g["ui_panel"] = UiPanel;
+            g["ui_panel_frame"] = UiPanelFrame;
+            g["ui_button"] = UiButton;
+            g["ui_pill"] = UiPill;
+            g["ui_pill_frame"] = UiPillFrame;
+            g["ui_pip"] = UiPip;
+            g["ui_bar_fill"] = UiBarFill;
+            g["ui_touch"] = UiTouch;
+            g["ui_glow"] = UiGlow;
+            g["ui_shadow"] = UiShadow;
+            g["ui_arrow"] = UiArrow;
+            g["ui_flip"] = UiFlip;
+            g["ui_play"] = UiPlay;
+            g["ui_pause"] = UiPause;
+            g["ui_circle"] = UiCircle;
+            g["ui_shield"] = UiShield;
+            g["ui_checker"] = UiChecker;
+            g["ui_check"] = UiCheck;
 
             return g;
         }
@@ -822,6 +794,390 @@ namespace TurtleBlaster
                     }
                 }
             return c.ToSprite(16f, new Vector2(0.5f, 0.5f));
+        }
+
+        // =================================================================
+        // Crisp DIY Skateboard Scrapbook / Workshop UI sprites (FilterMode.Point)
+        // =================================================================
+        static Sprite UiPanel()
+        {
+            const int w = 16, h = 16;
+            var c = new PixelCanvas(w, h);
+            var ink = PixelCanvas.C("#241711");
+            var shad = new Color32(20, 12, 8, 135);
+            var bot = new Color32(206, 196, 184, 255);
+            var grainA = new Color32(224, 214, 202, 255);
+            var grainB = new Color32(238, 230, 220, 255);
+            var top = new Color32(246, 239, 230, 255);
+
+            c.Rect(2, 0, 12, 1, shad);
+            c.Rect(1, 1, 14, 1, ink);
+            for (int y = 2; y <= 14; y++)
+            {
+                Color32 fill = y <= 4 ? bot : (y >= 12 ? top : ((y & 1) == 0 ? grainA : grainB));
+                c.Set(0, y, ink);
+                c.Rect(1, y, 14, 1, fill);
+                c.Set(15, y, ink);
+            }
+            c.Rect(1, 15, 14, 1, ink);
+
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(4, 5, 4, 4));
+        }
+
+        static Sprite UiPanelFrame()
+        {
+            const int w = 16, h = 16;
+            var c = new PixelCanvas(w, h);
+            var ink = PixelCanvas.C("#241711");
+            var woodHi = PixelCanvas.C("#e3b884");
+            var woodLo = PixelCanvas.C("#a67546");
+            var boltHi = PixelCanvas.C("#e4ebf2");
+            var boltLo = PixelCanvas.C("#93a0b2");
+
+            c.Rect(1, 1, 14, 1, ink);
+            c.Set(0, 2, ink); c.Set(1, 2, woodHi); c.Rect(2, 2, 13, 1, woodLo); c.Set(15, 2, ink);
+            c.Set(0, 3, ink); c.Set(1, 3, woodHi); c.Set(2, 3, boltLo); c.Rect(3, 3, 10, 1, ink); c.Set(13, 3, boltLo); c.Set(14, 3, woodLo); c.Set(15, 3, ink);
+            for (int y = 4; y <= 12; y++)
+            {
+                c.Set(0, y, ink); c.Set(1, y, woodHi); c.Set(2, y, ink);
+                c.Set(13, y, ink); c.Set(14, y, woodLo); c.Set(15, y, ink);
+            }
+            c.Set(0, 13, ink); c.Set(1, 13, woodHi); c.Set(2, 13, boltHi); c.Rect(3, 13, 10, 1, ink); c.Set(13, 13, boltHi); c.Set(14, 13, woodLo); c.Set(15, 13, ink);
+            c.Set(0, 14, ink); c.Rect(1, 14, 13, 1, woodHi); c.Set(14, 14, woodLo); c.Set(15, 14, ink);
+            c.Rect(1, 15, 14, 1, ink);
+
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(4, 5, 4, 4));
+        }
+
+        static Sprite UiButton()
+        {
+            const int w = 16, h = 16;
+            var c = new PixelCanvas(w, h);
+            var ink = PixelCanvas.C("#241711");
+            var shad = new Color32(20, 12, 8, 130);
+            var lipDark = new Color32(138, 126, 118, 255);
+            var lip = new Color32(166, 154, 144, 255);
+            var seam = new Color32(92, 78, 68, 255);
+            var faceLow = new Color32(222, 216, 208, 255);
+            var faceHigh = new Color32(246, 242, 236, 255);
+            var creamHi = new Color32(255, 250, 240, 255);
+
+            c.Rect(2, 0, 12, 1, shad);
+            c.Rect(1, 1, 14, 1, ink);
+            c.Set(0, 2, ink); c.Rect(1, 2, 14, 1, lipDark); c.Set(15, 2, ink);
+            c.Set(0, 3, ink); c.Rect(1, 3, 14, 1, lip); c.Set(15, 3, ink);
+            c.Set(0, 4, ink); c.Rect(1, 4, 14, 1, seam); c.Set(15, 4, ink);
+
+            for (int y = 5; y <= 12; y++)
+            {
+                c.Set(0, y, ink);
+                c.Rect(1, y, 14, 1, y <= 8 ? faceLow : faceHigh);
+                c.Set(15, y, ink);
+            }
+
+            c.Set(0, 13, ink); c.Rect(1, 13, 14, 1, creamHi); c.Set(15, 13, ink);
+            c.Set(0, 14, ink); c.Rect(1, 14, 14, 1, creamHi); c.Set(15, 14, ink);
+            c.Set(2, 12, White); c.Set(3, 12, White);
+            c.Rect(1, 15, 14, 1, ink);
+
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(4, 6, 4, 4));
+        }
+
+        static Sprite UiPill()
+        {
+            const int w = 14, h = 14;
+            var c = new PixelCanvas(w, h);
+            var ink = PixelCanvas.C("#241711");
+            var low = new Color32(216, 208, 198, 255);
+            var high = new Color32(246, 240, 232, 255);
+
+            c.Rect(1, 0, 12, 1, ink);
+            for (int y = 1; y <= 12; y++)
+            {
+                c.Set(0, y, ink);
+                c.Rect(1, y, 12, 1, y <= 6 ? low : high);
+                c.Set(13, y, ink);
+            }
+            c.Rect(1, 13, 12, 1, ink);
+
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(4, 4, 4, 4));
+        }
+
+        static Sprite UiPillFrame()
+        {
+            const int w = 14, h = 14;
+            var c = new PixelCanvas(w, h);
+            var ink = PixelCanvas.C("#241711");
+            var tapeHi = PixelCanvas.C("#e8cfa6");
+            var tapeLo = PixelCanvas.C("#a8885e");
+
+            c.Rect(1, 0, 12, 1, ink);
+            c.Set(0, 1, ink); c.Set(1, 1, tapeHi); c.Rect(2, 1, 11, 1, tapeLo); c.Set(13, 1, ink);
+            for (int y = 2; y <= 11; y++)
+            {
+                c.Set(0, y, ink); c.Set(1, y, tapeHi);
+                c.Set(12, y, tapeLo); c.Set(13, y, ink);
+            }
+            c.Set(0, 12, ink); c.Rect(1, 12, 11, 1, tapeHi); c.Set(12, 12, tapeLo); c.Set(13, 12, ink);
+            c.Rect(1, 13, 12, 1, ink);
+
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(4, 4, 4, 4));
+        }
+
+        static Sprite UiPip()
+        {
+            const int w = 8, h = 6;
+            var c = new PixelCanvas(w, h);
+            var ink = PixelCanvas.C("#241711");
+            var shade = new Color32(186, 176, 164, 255);
+            var body = new Color32(240, 234, 224, 255);
+            var creamHi = new Color32(255, 250, 240, 255);
+
+            c.Rect(1, 0, 6, 1, ink);
+            c.Set(0, 1, ink); c.Rect(1, 1, 6, 1, shade); c.Set(7, 1, ink);
+            for (int y = 2; y <= 3; y++)
+            {
+                c.Set(0, y, ink); c.Rect(1, y, 6, 1, body); c.Set(7, y, ink);
+            }
+            c.Set(0, 4, ink); c.Rect(1, 4, 6, 1, creamHi); c.Set(7, 4, ink);
+            c.Rect(1, 5, 6, 1, ink);
+
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(2, 2, 2, 2));
+        }
+
+        static Sprite UiBarFill()
+        {
+            const int w = 16, h = 8;
+            var c = new PixelCanvas(w, h);
+            var bot = new Color32(154, 142, 132, 255);
+            var body = new Color32(232, 226, 216, 255);
+            var stripe = new Color32(248, 244, 238, 255);
+            var hi = new Color32(255, 252, 245, 255);
+            var top = new Color32(224, 218, 210, 255);
+
+            c.Rect(0, 0, w, 1, bot);
+            for (int y = 1; y <= 4; y++)
+                for (int x = 0; x < w; x++)
+                    c.Set(x, y, (((x + y) & 7) < 2) ? stripe : body);
+            c.Rect(0, 5, w, 2, hi);
+            c.Rect(0, 7, w, 1, top);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiTouch()
+        {
+            const int w = 20, h = 20;
+            var c = new PixelCanvas(w, h);
+            var ink = PixelCanvas.C("#241711");
+            var shad = new Color32(20, 12, 8, 110);
+            var lipDark = new Color32(138, 126, 118, 220);
+            var lip = new Color32(168, 156, 146, 225);
+            var seam = new Color32(84, 70, 60, 230);
+            var faceLow = new Color32(214, 208, 198, 195);
+            var faceHigh = new Color32(242, 236, 228, 205);
+            var creamHi = new Color32(255, 250, 240, 235);
+            var boltHi = new Color32(235, 242, 250, 245);
+            var boltLo = new Color32(140, 152, 170, 240);
+
+            c.Rect(2, 0, 16, 1, shad);
+            c.Rect(2, 1, 16, 1, ink);
+            c.Set(1, 2, ink); c.Rect(2, 2, 16, 1, lipDark); c.Set(18, 2, ink);
+            c.Set(0, 3, ink); c.Rect(1, 3, 18, 1, lip); c.Set(19, 3, ink);
+            c.Set(0, 4, ink); c.Rect(1, 4, 18, 1, seam); c.Set(19, 4, ink);
+
+            for (int y = 5; y <= 15; y++)
+            {
+                c.Set(0, y, ink);
+                c.Set(1, y, creamHi);
+                c.Rect(2, y, 16, 1, y <= 9 ? faceLow : faceHigh);
+                c.Set(18, y, lip);
+                c.Set(19, y, ink);
+            }
+
+            c.Set(0, 16, ink); c.Rect(1, 16, 18, 1, creamHi); c.Set(19, 16, ink);
+            c.Set(1, 17, ink); c.Rect(2, 17, 16, 1, creamHi); c.Set(18, 17, ink);
+            c.Rect(2, 18, 16, 1, ink);
+
+            // Corner bolts inside the 9-slice corners
+            c.Set(2, 6, boltHi); c.Set(3, 6, boltLo); c.Set(2, 5, boltLo); c.Set(3, 5, ink);
+            c.Set(16, 6, boltHi); c.Set(17, 6, boltLo); c.Set(16, 5, boltLo); c.Set(17, 5, ink);
+            c.Set(2, 16, boltHi); c.Set(3, 16, boltLo); c.Set(2, 15, boltLo); c.Set(3, 15, ink);
+            c.Set(16, 16, boltHi); c.Set(17, 16, boltLo); c.Set(16, 15, boltLo); c.Set(17, 15, ink);
+
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(5, 7, 5, 5));
+        }
+
+        static Sprite UiGlow()
+        {
+            const int s = 24;
+            var c = new PixelCanvas(s, s);
+            for (int y = 0; y < s; y++)
+            {
+                for (int x = 0; x < s; x++)
+                {
+                    float dx = (x + 0.5f - s * 0.5f) / (s * 0.5f);
+                    float dy = (y + 0.5f - s * 0.5f) / (s * 0.5f);
+                    float r = Mathf.Sqrt(dx * dx + dy * dy);
+                    float ang = Mathf.Atan2(dy, dx);
+                    float rim = 0.88f + 0.08f * Mathf.Cos(ang * 8f);
+                    if (r >= rim) continue;
+
+                    byte a = r < rim * 0.62f ? (byte)115 : (byte)52;
+                    c.Set(x, y, new Color32(255, 255, 255, a));
+                }
+            }
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiChecker()
+        {
+            const int w = 8, h = 4;
+            var c = new PixelCanvas(w, h);
+            var ylw = PixelCanvas.C("#ffd147");
+            var blk = PixelCanvas.C("#241711");
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                    c.Set(x, y, ((x + y) & 7) < 4 ? ylw : blk);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiShadow()
+        {
+            const int s = 16;
+            var c = new PixelCanvas(s, s);
+            var soft = new Color32(0, 0, 0, 68);
+            var core = new Color32(0, 0, 0, 145);
+
+            c.Rect(2, 1, 12, 14, soft);
+            c.Rect(1, 2, 14, 12, soft);
+            c.Rect(3, 2, 10, 12, core);
+            c.Rect(2, 3, 12, 10, core);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(4, 4, 4, 4));
+        }
+
+        static Sprite UiArrow()
+        {
+            const int s = 18;
+            var c = new PixelCanvas(s, s);
+            c.Rect(7, 2, 4, 7, White);
+            c.Triangle(new Vector2(3f, 8.5f), new Vector2(15f, 8.5f), new Vector2(9f, 15f), White);
+            c.Outline(K);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiFlip()
+        {
+            const int s = 22;
+            var c = new PixelCanvas(s, s);
+            for (int y = 0; y < s; y++)
+            {
+                for (int x = 0; x < s; x++)
+                {
+                    float dx = x - 10.5f;
+                    float dy = y - 10.5f;
+                    float r = Mathf.Sqrt(dx * dx + dy * dy);
+                    if (r < 4.0f || r > 6.7f) continue;
+                    float ang = Mathf.Atan2(dy, dx) * Mathf.Rad2Deg;
+                    if (ang > 20f && ang < 84f) continue;
+                    c.Set(x, y, White);
+                }
+            }
+            c.Triangle(new Vector2(12f, 11f), new Vector2(16.5f, 15.5f), new Vector2(18.5f, 8f), White);
+            c.Outline(K);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiPlay()
+        {
+            const int s = 16;
+            var c = new PixelCanvas(s, s);
+            c.Triangle(new Vector2(4f, 2.5f), new Vector2(4f, 13.5f), new Vector2(13.5f, 8f), White);
+            c.Outline(K);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiPause()
+        {
+            const int s = 16;
+            var c = new PixelCanvas(s, s);
+            c.Rect(3, 2, 4, 12, White);
+            c.Rect(9, 2, 4, 12, White);
+            c.Outline(K);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiCircle()
+        {
+            const int s = 20;
+            var c = new PixelCanvas(s, s);
+            c.Ellipse(9.5f, 9.5f, 7.5f, 7.5f, White);
+            c.Outline(K);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiShield()
+        {
+            const int w = 14, h = 16;
+            var c = new PixelCanvas(w, h);
+            var rimHi = PixelCanvas.C("#eef5ff");
+            var rimLo = PixelCanvas.C("#9cb4d6");
+            var fill = PixelCanvas.C("#4dd2ff");
+            var shade = PixelCanvas.C("#2699e6");
+            var hi = PixelCanvas.C("#a8ecff");
+
+            c.Rect(2, 13, 10, 1, rimHi);
+            for (int y = 8; y <= 12; y++)
+            {
+                c.Set(2, y, rimHi);
+                c.Rect(3, y, 8, 1, y >= 11 ? hi : fill);
+                c.Set(11, y, rimLo);
+            }
+            for (int y = 6; y <= 7; y++)
+            {
+                c.Set(3, y, rimHi);
+                c.Rect(4, y, 6, 1, fill);
+                c.Set(10, y, rimLo);
+            }
+            for (int y = 4; y <= 5; y++)
+            {
+                c.Set(4, y, rimHi);
+                c.Rect(5, y, 4, 1, shade);
+                c.Set(9, y, rimLo);
+            }
+            c.Set(5, 3, rimHi); c.Rect(6, 3, 2, 1, shade); c.Set(8, 3, rimLo);
+            c.Set(6, 2, rimHi); c.Set(7, 2, rimLo);
+
+            c.Set(4, 11, White); c.Set(4, 10, White);
+            c.Rect(8, 8, 3, 3, shade);
+            c.Outline(K);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiCheck()
+        {
+            const int s = 16;
+            var c = new PixelCanvas(s, s);
+            var body = PixelCanvas.C("#4cd964");
+            var hi = PixelCanvas.C("#a3f7b5");
+
+            for (int i = 0; i <= 3; i++)
+            {
+                int x = 3 + i;
+                int y = 7 - i;
+                c.Set(x, y, body);
+                c.Set(x, y - 1, body);
+                c.Set(x, y + 1, hi);
+            }
+            for (int i = 0; i <= 6; i++)
+            {
+                int x = 6 + i;
+                int y = 4 + i;
+                c.Set(x, y, body);
+                c.Set(x, y - 1, body);
+                c.Set(x, y + 1, hi);
+            }
+            c.Outline(K);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
         }
     }
 }

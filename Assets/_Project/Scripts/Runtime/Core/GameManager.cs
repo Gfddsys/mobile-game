@@ -169,8 +169,6 @@ namespace TurtleBlaster
                     if (b != currentBiome)
                     {
                         currentBiome = b;
-                        var def = LevelBiomes.Get(b);
-                        UI.Popup(def.name.ToUpper() + "!", def.bannerColor, 74);
                         AudioManager.Sfx("perfect");
                     }
 

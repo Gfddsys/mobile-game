@@ -12,15 +12,17 @@ namespace TurtleBlaster
     public partial class UIRoot
     {
         RectTransform skinsScreen, shopScreen, ranksScreen, reviveOverlay, energyOverlay, dailyRewardOverlay, adOverlay, purchaseOverlay;
-        Text skinsWallet, shopWallet, shopNote, ranksRank, ranksName, ranksDist, ranksScore, ranksDate;
+        UIFactory.WalletDisplay skinsWallet, shopWallet;
+        Text shopNote, ranksRank, ranksName, ranksDist, ranksScore, ranksDate;
         Text reviveTimerText, energyOverlayTimerText, dailyStatusText, adTitle, adSub, adCountdown, purchaseText;
         Image reviveBar;
         Button adClaimBtn, doubleCoinsBtn, energyOverlayAdBtn, dailyClaimBtn;
 
-        class SkinCard { public SkinDef skin; public Image preview; public Text price; public Button button; }
-        class DailyCard { public LoginRewardDef reward; public Image bg; public Text status; }
+        class SkinCard { public SkinDef skin; public RectTransform cardRt; public Image accent; public Image preview; public Image priceIcon; public Text price; public Button button; }
+        class DailyCard { public LoginRewardDef reward; public RectTransform cardRt; public Image accent; public Image bg; public Text status; }
         readonly List<SkinCard> skinCards = new List<SkinCard>();
         readonly List<DailyCard> dailyCards = new List<DailyCard>();
+        readonly List<RectTransform> productCards = new List<RectTransform>();
         readonly List<Button> productButtons = new List<Button>();
 
         Action<bool> reviveCallback, adCallback, purchaseCallback;
@@ -66,67 +68,61 @@ namespace TurtleBlaster
             return rt;
         }
 
-        static Text Title(Transform parent, string text, int size = 96)
-        {
-            var t = UIFactory.Label(parent, text, size, UIFactory.Accent, TextAnchor.UpperLeft);
-            UIFactory.Place((RectTransform)t.transform, new Vector2(0, 1), new Vector2(50, -30), new Vector2(1200, 110));
-            return t;
-        }
-
-        Text Wallet(Transform parent)
-        {
-            var t = UIFactory.Label(parent, "", 48, Color.white, TextAnchor.UpperRight);
-            UIFactory.Place((RectTransform)t.transform, new Vector2(1, 1), new Vector2(-50, -50), new Vector2(900, 60));
-            return t;
-        }
-
-        void BackButton(Transform parent)
-        {
-            var back = UIFactory.MakeButton(parent, "BACK", new Color(0.8f, 0.3f, 0.3f), () => gm.ShowMenu(), new Vector2(320, 100), 52);
-            UIFactory.Place((RectTransform)back.transform, new Vector2(0.5f, 0), new Vector2(0, 40), new Vector2(320, 100));
-        }
-
         // =====================================================================
         // Skins
         // =====================================================================
         void BuildSkins(Transform parent)
         {
-            skinsScreen = FullScreen(parent, "Skins", new Color(0.08f, 0.09f, 0.16f, 0.95f));
-            Title(skinsScreen, "SKINS");
-            skinsWallet = Wallet(skinsScreen);
+            skinsScreen = FullScreen(parent, "Skins", new Color(0.06f, 0.08f, 0.16f, 0.96f));
+            UIFactory.HeaderBar(skinsScreen, "SKINS", () => gm.ShowMenu(), out skinsWallet);
 
+            var skinsMotion = UIPanelMotion.Attach(skinsScreen, null, 0.16f);
             var pos = new[]
             {
-                new Vector2(-660, 175), new Vector2(-220, 175), new Vector2(220, 175), new Vector2(660, 175),
-                new Vector2(-440, -195), new Vector2(0, -195), new Vector2(440, -195),
+                new Vector2(-675, 135), new Vector2(-225, 135), new Vector2(225, 135), new Vector2(675, 135),
+                new Vector2(-450, -265), new Vector2(0, -265), new Vector2(450, -265),
             };
             var skins = SkinDatabase.All;
             for (int i = 0; i < skins.Count && i < pos.Length; i++)
             {
                 var skin = skins[i];
-                var card = UIFactory.PanelBox(skinsScreen, "Skin_" + skin.id, skin.IsPremium ? new Color(0.35f, 0.22f, 0.45f) : new Color(0.17f, 0.18f, 0.3f));
-                UIFactory.Place((RectTransform)card.transform, new Vector2(0.5f, 0.5f), pos[i], new Vector2(400, 360));
+                var card = UIFactory.PanelBox(skinsScreen, "Skin_" + skin.id, skin.IsPremium ? new Color(0.24f, 0.16f, 0.38f) : UIFactory.CardBg);
+                var cardRt = (RectTransform)card.transform;
+                UIFactory.Place(cardRt, new Vector2(0.5f, 0.5f), pos[i], new Vector2(410, 375));
+                var acc = UIFactory.AddTopAccent(card.transform, skin.IsPremium ? UIFactory.Accent : UIFactory.Panel, 6f, 18f);
+                skinsMotion.AddStagger(cardRt);
+
+                var spot = UIFactory.Image(card.transform, "Spotlight", SpriteLibrary.Get("ui_glow"),
+                    skin.IsPremium ? new Color(0.75f, 0.45f, 1f, 0.32f) : new Color(0.35f, 0.65f, 1f, 0.24f));
+                UIFactory.Place((RectTransform)spot.transform, new Vector2(0.5f, 1), new Vector2(0, -24), new Vector2(140, 140), new Vector2(0.5f, 1));
 
                 var preview = UIFactory.Image(card.transform, "Preview", SpriteLibrary.GetTurtle(skin.id), Color.white);
-                UIFactory.Place((RectTransform)preview.transform, new Vector2(0.5f, 1), new Vector2(0, -14), new Vector2(166, 128), new Vector2(0.5f, 1));
+                preview.preserveAspect = true;
+                var previewRt = (RectTransform)preview.transform;
+                UIFactory.Place(previewRt, new Vector2(0.5f, 1), new Vector2(0, -26), new Vector2(160, 122), new Vector2(0.5f, 1));
+                UIFloatBob.Attach(previewRt, 4f, 0f, 2.2f, i * 0.7f);
 
                 var name = UIFactory.Label(card.transform, skin.name, 34, Color.white);
-                UIFactory.Place((RectTransform)name.transform, new Vector2(0.5f, 0), new Vector2(0, 168), new Vector2(380, 40));
+                UIFactory.Place((RectTransform)name.transform, new Vector2(0.5f, 0), new Vector2(0, 176), new Vector2(380, 40));
 
-                var perk = UIFactory.Label(card.transform, skin.perkDesc ?? "", 24, new Color(0.55f, 0.95f, 0.7f));
-                UIFactory.Place((RectTransform)perk.transform, new Vector2(0.5f, 0), new Vector2(0, 134), new Vector2(380, 32));
+                var perkPill = UIFactory.GlassPill(card.transform, "PerkPill", UIFactory.SlotDark);
+                UIFactory.Place((RectTransform)perkPill.transform, new Vector2(0.5f, 0), new Vector2(0, 128), new Vector2(368, 44));
+                var perk = UIFactory.Label(perkPill.transform, skin.perkDesc ?? "", 26, new Color(0.48f, 0.95f, 0.68f));
+                var prt = (RectTransform)perk.transform; prt.anchorMin = Vector2.zero; prt.anchorMax = Vector2.one; prt.offsetMin = new Vector2(12, 0); prt.offsetMax = new Vector2(-12, 0);
+
+                var priceIcon = UIFactory.Image(card.transform, "PriceCoin", SpriteLibrary.Get("coin"), Color.white);
+                priceIcon.preserveAspect = true;
+                UIFactory.Place((RectTransform)priceIcon.transform, new Vector2(0.5f, 0), new Vector2(-56, 98), new Vector2(26, 26), new Vector2(0.5f, 0));
 
                 var price = UIFactory.Label(card.transform, "", 28, UIFactory.Accent);
-                UIFactory.Place((RectTransform)price.transform, new Vector2(0.5f, 0), new Vector2(0, 100), new Vector2(380, 36));
+                UIFactory.Place((RectTransform)price.transform, new Vector2(0.5f, 0), new Vector2(0, 95), new Vector2(380, 34), new Vector2(0.5f, 0));
 
                 int index = i;
-                var btn = UIFactory.MakeButton(card.transform, "BUY", UIFactory.Blue, () => SkinAction(index), new Vector2(340, 76), 32);
-                UIFactory.Place((RectTransform)btn.transform, new Vector2(0.5f, 0), new Vector2(0, 20), new Vector2(340, 76));
+                var btn = UIFactory.MakeButton(card.transform, "BUY", UIFactory.Blue, () => SkinAction(index), new Vector2(350, 74), 34);
+                UIFactory.Place((RectTransform)btn.transform, new Vector2(0.5f, 0), new Vector2(0, 16), new Vector2(350, 74));
 
-                skinCards.Add(new SkinCard { skin = skin, preview = preview, price = price, button = btn });
+                skinCards.Add(new SkinCard { skin = skin, cardRt = cardRt, accent = acc, preview = preview, priceIcon = priceIcon, price = price, button = btn });
             }
-
-            BackButton(skinsScreen);
         }
 
         public void ShowSkins()
@@ -143,8 +139,23 @@ namespace TurtleBlaster
             {
                 bool owned = save.OwnsSkin(c.skin.id);
                 bool equipped = save.selectedSkin == c.skin.id;
+                bool showCoin = !owned && !c.skin.IsPremium;
                 var img = (Image)c.button.targetGraphic;
                 c.button.interactable = !equipped;
+                if (c.accent != null)
+                    c.accent.color = equipped ? UIFactory.Good : (c.skin.IsPremium ? UIFactory.Accent : new Color(0.28f, 0.35f, 0.56f));
+                if (c.priceIcon != null) c.priceIcon.gameObject.SetActive(showCoin);
+                if (showCoin)
+                {
+                    UIFactory.Place((RectTransform)c.price.transform, new Vector2(0.5f, 0), new Vector2(-32, 96), new Vector2(180, 30), new Vector2(0, 0));
+                    c.price.alignment = TextAnchor.MiddleLeft;
+                }
+                else
+                {
+                    UIFactory.Place((RectTransform)c.price.transform, new Vector2(0.5f, 0), new Vector2(0, 96), new Vector2(380, 30), new Vector2(0.5f, 0));
+                    c.price.alignment = TextAnchor.MiddleCenter;
+                }
+
                 if (equipped)
                 {
                     c.price.text = "OWNED";
@@ -167,8 +178,8 @@ namespace TurtleBlaster
                 }
                 else
                 {
-                    c.price.text = c.skin.coinPrice + " coins";
-                    UIFactory.SetButtonLabel(c.button, "BUY " + c.skin.coinPrice + "c");
+                    c.price.text = c.skin.coinPrice.ToString("N0");
+                    UIFactory.SetButtonLabel(c.button, "BUY");
                     img.color = save.coins >= c.skin.coinPrice ? UIFactory.Blue : new Color(0.35f, 0.35f, 0.45f);
                 }
             }
@@ -184,18 +195,38 @@ namespace TurtleBlaster
             {
                 save.EquipSkin(skin.id);
                 AudioManager.Sfx("click");
+                UIPunch.Trigger(skinCards[index].cardRt, 0.12f);
             }
             else if (skin.IsPremium)
             {
                 Store.Buy(skin.productId, ok =>
                 {
-                    if (ok) { save.EquipSkin(skin.id); AudioManager.Sfx("buy"); Popup("UNLOCKED " + skin.name.ToUpper() + "!", UIFactory.Accent); }
-                    else AudioManager.Sfx("deny");
+                    if (ok)
+                    {
+                        save.EquipSkin(skin.id);
+                        AudioManager.Sfx("buy");
+                        UIPunch.Trigger(skinCards[index].cardRt, 0.14f);
+                        Popup("UNLOCKED " + skin.name.ToUpper() + "!", UIFactory.Accent);
+                    }
+                    else
+                    {
+                        AudioManager.Sfx("deny");
+                        skinCards[index].button.GetComponent<UIButtonFeel>()?.Shake();
+                    }
                     RefreshSkins();
                 });
                 return;
             }
-            else AudioManager.Sfx(save.TryBuySkin(skin.id) ? "buy" : "deny");
+            else if (save.TryBuySkin(skin.id))
+            {
+                AudioManager.Sfx("buy");
+                UIPunch.Trigger(skinCards[index].cardRt, 0.14f);
+            }
+            else
+            {
+                AudioManager.Sfx("deny");
+                skinCards[index].button.GetComponent<UIButtonFeel>()?.Shake();
+            }
             RefreshSkins();
         }
 
@@ -204,39 +235,78 @@ namespace TurtleBlaster
         // =====================================================================
         void BuildShop(Transform parent)
         {
-            shopScreen = FullScreen(parent, "Shop", new Color(0.08f, 0.09f, 0.16f, 0.95f));
-            Title(shopScreen, "SHOP");
-            shopWallet = Wallet(shopScreen);
+            shopScreen = FullScreen(parent, "Shop", new Color(0.06f, 0.08f, 0.16f, 0.96f));
+            UIFactory.HeaderBar(shopScreen, "SHOP", () => gm.ShowMenu(), out shopWallet);
 
+            var shopMotion = UIPanelMotion.Attach(shopScreen, null, 0.16f);
             var products = ProductCatalog.All;
             for (int i = 0; i < products.Count; i++)
             {
                 var p = products[i];
-                float x = -660 + i * 440;
-                var card = UIFactory.PanelBox(shopScreen, "Product_" + p.id, p.kind == ProductKind.Skin ? new Color(0.35f, 0.22f, 0.45f) : new Color(0.17f, 0.18f, 0.3f));
-                UIFactory.Place((RectTransform)card.transform, new Vector2(0.5f, 0.5f), new Vector2(x, 40), new Vector2(400, 440));
+                float x = -675 + i * 450;
+                bool isSkin = p.kind == ProductKind.Skin;
+                var card = UIFactory.PanelBox(shopScreen, "Product_" + p.id, isSkin ? new Color(0.24f, 0.16f, 0.38f) : UIFactory.CardBg);
+                var cardRt = (RectTransform)card.transform;
+                UIFactory.Place(cardRt, new Vector2(0.5f, 0.5f), new Vector2(x, 22), new Vector2(410, 470));
+                UIFactory.AddTopAccent(card.transform, isSkin ? UIFactory.Purple : UIFactory.Amber, 7f, 18f);
+                shopMotion.AddStagger(cardRt);
+                productCards.Add(cardRt);
 
-                var icon = UIFactory.Image(card.transform, "Icon", p.kind == ProductKind.Skin ? SpriteLibrary.GetTurtle(p.skinId) : SpriteLibrary.Get("coin"), Color.white);
-                UIFactory.Place((RectTransform)icon.transform, new Vector2(0.5f, 1), new Vector2(0, -30), p.kind == ProductKind.Skin ? new Vector2(208, 160) : new Vector2(150, 150), new Vector2(0.5f, 1));
+                var spot = UIFactory.Image(card.transform, "Spotlight", SpriteLibrary.Get("ui_glow"),
+                    isSkin ? new Color(0.72f, 0.42f, 1f, 0.34f) : new Color(1f, 0.78f, 0.25f, 0.28f));
+                UIFactory.Place((RectTransform)spot.transform, new Vector2(0.5f, 1), new Vector2(0, -52), new Vector2(156, 156), new Vector2(0.5f, 1));
 
-                var title = UIFactory.Label(card.transform, p.title, 36, Color.white);
-                UIFactory.Place((RectTransform)title.transform, new Vector2(0.5f, 0), new Vector2(0, 190), new Vector2(380, 44));
-                var what = UIFactory.Label(card.transform, p.kind == ProductKind.Coins ? "+" + p.coins.ToString("N0") + " coins" : "Exclusive animated skin", 32, UIFactory.Accent);
-                UIFactory.Place((RectTransform)what.transform, new Vector2(0.5f, 0), new Vector2(0, 140), new Vector2(380, 40));
+                var icon = UIFactory.Image(card.transform, "Icon", isSkin ? SpriteLibrary.GetTurtle(p.skinId) : SpriteLibrary.Get("coin"), Color.white);
+                icon.preserveAspect = true;
+                var iconRt = (RectTransform)icon.transform;
+                UIFactory.Place(iconRt, new Vector2(0.5f, 1), new Vector2(0, -60), isSkin ? new Vector2(190, 142) : new Vector2(138, 138), new Vector2(0.5f, 1));
+                UIFloatBob.Attach(iconRt, 4f, 0f, 2.2f, i * 0.8f);
+
+                string tag = p.id == ProductCatalog.CoinsMedium ? "POPULAR" : p.id == ProductCatalog.CoinsLarge ? "BEST VALUE" : isSkin ? "EXCLUSIVE" : null;
+                if (tag != null)
+                {
+                    Color tagCol = p.id == ProductCatalog.CoinsLarge ? UIFactory.Good : isSkin ? UIFactory.Purple : UIFactory.Blue;
+                    var tagPill = UIFactory.GlassPill(card.transform, "Tag", tagCol);
+                    UIFactory.Place((RectTransform)tagPill.transform, new Vector2(1, 1), new Vector2(-16, -24), new Vector2(176, 42), new Vector2(1, 1));
+                    var tagTxt = UIFactory.Label(tagPill.transform, tag, 24, Color.white);
+                    var trt = (RectTransform)tagTxt.transform; trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one; trt.offsetMin = trt.offsetMax = Vector2.zero;
+                }
+
+                var title = UIFactory.Label(card.transform, p.title, 34, Color.white);
+                UIFactory.Place((RectTransform)title.transform, new Vector2(0.5f, 0), new Vector2(0, 200), new Vector2(380, 42));
+
+                var whatPill = UIFactory.GlassPill(card.transform, "WhatPill", UIFactory.SlotDark);
+                UIFactory.Place((RectTransform)whatPill.transform, new Vector2(0.5f, 0), new Vector2(0, 140), new Vector2(364, 54));
+                if (isSkin)
+                {
+                    var what = UIFactory.Label(whatPill.transform, "Exclusive animated skin", 28, UIFactory.Accent);
+                    var wrt = (RectTransform)what.transform; wrt.anchorMin = Vector2.zero; wrt.anchorMax = Vector2.one;
+                    wrt.offsetMin = Vector2.zero; wrt.offsetMax = Vector2.zero;
+                }
+                else
+                {
+                    string amtStr = "+" + p.coins.ToString("N0");
+                    float txtW = amtStr.Length * 18f + 4f;
+                    float totalW = 32f + 10f + txtW;
+                    float startX = -totalW * 0.5f;
+                    var whatCoin = UIFactory.Image(whatPill.transform, "WhatCoin", SpriteLibrary.Get("coin"), Color.white);
+                    whatCoin.preserveAspect = true;
+                    UIFactory.Place((RectTransform)whatCoin.transform, new Vector2(0.5f, 0.5f), new Vector2(startX + 16f, 0), new Vector2(32, 32), new Vector2(0.5f, 0.5f));
+                    var what = UIFactory.Label(whatPill.transform, amtStr, 32, UIFactory.Accent, TextAnchor.MiddleLeft);
+                    UIFactory.Place((RectTransform)what.transform, new Vector2(0.5f, 0.5f), new Vector2(startX + 42f, 0), new Vector2(txtW + 24f, 44f), new Vector2(0f, 0.5f));
+                }
 
                 int index = i;
-                var btn = UIFactory.MakeButton(card.transform, "BUY", new Color(0.2f, 0.7f, 0.3f), () => ShopAction(index), new Vector2(340, 90), 40);
-                UIFactory.Place((RectTransform)btn.transform, new Vector2(0.5f, 0), new Vector2(0, 28), new Vector2(340, 90));
+                var btn = UIFactory.MakeButton(card.transform, "BUY", UIFactory.Good, () => ShopAction(index), new Vector2(350, 88), 38);
+                UIFactory.Place((RectTransform)btn.transform, new Vector2(0.5f, 0), new Vector2(0, 24), new Vector2(350, 88));
                 productButtons.Add(btn);
             }
 
-            shopNote = UIFactory.Label(shopScreen, "", 28, new Color(1f, 0.8f, 0.5f));
-            UIFactory.Place((RectTransform)shopNote.transform, new Vector2(0.5f, 0), new Vector2(0, 205), new Vector2(1700, 40));
+            shopNote = UIFactory.Label(shopScreen, "", 28, UIFactory.TextMuted);
+            UIFactory.Place((RectTransform)shopNote.transform, new Vector2(0.5f, 0), new Vector2(0, 128), new Vector2(1700, 38));
 
-            var restore = UIFactory.MakeButton(shopScreen, "RESTORE PURCHASES", UIFactory.Panel, RestorePurchases, new Vector2(420, 70), 28);
-            UIFactory.Place((RectTransform)restore.transform, new Vector2(1, 0), new Vector2(-50, 55), new Vector2(420, 70));
-
-            BackButton(shopScreen);
+            var restore = UIFactory.MakeButton(shopScreen, "RESTORE PURCHASES", UIFactory.Panel, RestorePurchases, new Vector2(416, 66), 30);
+            UIFactory.Place((RectTransform)restore.transform, new Vector2(0.5f, 0), new Vector2(0, 44), new Vector2(416, 66));
         }
 
         public void ShowShop()
@@ -275,9 +345,14 @@ namespace TurtleBlaster
                 if (ok)
                 {
                     AudioManager.Sfx("buy");
+                    UIPunch.Trigger(productCards[index], 0.14f);
                     Popup(p.kind == ProductKind.Coins ? "+" + p.coins.ToString("N0") + " COINS!" : "SKIN UNLOCKED!", UIFactory.Accent);
                 }
-                else AudioManager.Sfx("deny");
+                else
+                {
+                    AudioManager.Sfx("deny");
+                    productButtons[index].GetComponent<UIButtonFeel>()?.Shake();
+                }
                 RefreshShop();
             });
         }
@@ -302,29 +377,34 @@ namespace TurtleBlaster
         // =====================================================================
         void BuildRanks(Transform parent)
         {
-            ranksScreen = FullScreen(parent, "Leaderboard", new Color(0.08f, 0.09f, 0.16f, 0.95f));
-            Title(ranksScreen, "LEADERBOARD");
-            var sub = UIFactory.Label(ranksScreen, "Best distance - Global Leaderboard", 34, new Color(0.8f, 0.85f, 1f), TextAnchor.UpperLeft);
-            UIFactory.Place((RectTransform)sub.transform, new Vector2(0, 1), new Vector2(54, -140), new Vector2(1200, 44));
+            ranksScreen = FullScreen(parent, "Leaderboard", new Color(0.06f, 0.08f, 0.16f, 0.96f));
+            UIFactory.HeaderBar(ranksScreen, "LEADERBOARD", () => gm.ShowMenu(), out _, "TOP RUNNERS  -  BEST DISTANCE");
 
-            var panel = UIFactory.PanelBox(ranksScreen, "Table", new Color(0.17f, 0.18f, 0.3f));
-            UIFactory.Place((RectTransform)panel.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -20), new Vector2(1500, 700));
+            var panel = UIFactory.PanelBox(ranksScreen, "Table", UIFactory.CardBg);
+            UIFactory.Place((RectTransform)panel.transform, new Vector2(0.5f, 0.5f), new Vector2(0, -34), new Vector2(1560, 760));
+            UIFactory.AddTopAccent(panel.transform, UIFactory.Accent, 7f, 22f);
+
+            var hdrBand = UIFactory.GlassPill(panel.transform, "HeaderBand", UIFactory.SlotDark);
+            var hbrt = (RectTransform)hdrBand.transform;
+            hbrt.anchorMin = new Vector2(0, 1); hbrt.anchorMax = new Vector2(1, 1);
+            hbrt.pivot = new Vector2(0.5f, 1);
+            hbrt.offsetMin = new Vector2(24, -96); hbrt.offsetMax = new Vector2(-24, -28);
 
             Text Col(string name, string header, float x, float w, TextAnchor a)
             {
-                var h = UIFactory.Label(panel.transform, header, 34, UIFactory.Accent, a, FontStyle.Bold, name + "Header");
-                UIFactory.Place((RectTransform)h.transform, new Vector2(0, 1), new Vector2(x, -35), new Vector2(w, 44), new Vector2(0, 1));
-                var t = UIFactory.Label(panel.transform, "", 40, Color.white, a, FontStyle.Bold, name);
-                t.lineSpacing = 1.15f;
-                UIFactory.Place((RectTransform)t.transform, new Vector2(0, 1), new Vector2(x, -95), new Vector2(w, 590), new Vector2(0, 1));
+                var h = UIFactory.Label(panel.transform, header, 30, UIFactory.Accent, a, FontStyle.Bold, name + "Header");
+                UIFactory.Place((RectTransform)h.transform, new Vector2(0, 1), new Vector2(x, -40), new Vector2(w, 44), new Vector2(0, 1));
+                var t = UIFactory.Label(panel.transform, "", 38, Color.white, a, FontStyle.Bold, name);
+                t.lineSpacing = 1.18f;
+                UIFactory.Place((RectTransform)t.transform, new Vector2(0, 1), new Vector2(x, -108), new Vector2(w, 620), new Vector2(0, 1));
                 return t;
             }
             ranksRank = Col("Rank", "RANK", 60, 120, TextAnchor.UpperLeft);
-            ranksName = Col("Name", "NAME", 230, 480, TextAnchor.UpperLeft);
-            ranksDist = Col("Dist", "DISTANCE", 640, 260, TextAnchor.UpperRight);
-            ranksScore = Col("Score", "SCORE", 930, 220, TextAnchor.UpperRight);
-            ranksDate = Col("Date", "DATE", 1190, 260, TextAnchor.UpperLeft);
-            BackButton(ranksScreen);
+            ranksName = Col("Name", "NAME", 230, 500, TextAnchor.UpperLeft);
+            ranksDist = Col("Dist", "DISTANCE", 660, 260, TextAnchor.UpperRight);
+            ranksScore = Col("Score", "SCORE", 960, 220, TextAnchor.UpperRight);
+            ranksDate = Col("Date", "DATE", 1230, 260, TextAnchor.UpperLeft);
+            UIPanelMotion.Attach(ranksScreen, (RectTransform)panel.transform, 0.16f);
         }
 
         public void ShowLeaderboard()
@@ -357,8 +437,8 @@ namespace TurtleBlaster
         // =====================================================================
         void BuildSummaryExtras(RectTransform panel)
         {
-            doubleCoinsBtn = UIFactory.MakeButton(panel, "WATCH AD: x2 COINS", new Color(0.85f, 0.55f, 0.1f), () => gm.WatchAdForDoubleCoins(), new Vector2(560, 84), 34);
-            UIFactory.Place((RectTransform)doubleCoinsBtn.transform, new Vector2(0, 0), new Vector2(740, 172), new Vector2(560, 84), new Vector2(0, 0));
+            doubleCoinsBtn = UIFactory.MakeButton(panel, "WATCH AD: x2 COINS", new Color(0.85f, 0.55f, 0.1f), () => gm.WatchAdForDoubleCoins(), new Vector2(868, 84), 34);
+            UIFactory.Place((RectTransform)doubleCoinsBtn.transform, new Vector2(0, 0), new Vector2(736, 180), new Vector2(868, 84), new Vector2(0, 0));
         }
 
         void RefreshSummaryExtras(RunStats s)
@@ -367,6 +447,8 @@ namespace TurtleBlaster
             doubleCoinsBtn.gameObject.SetActive(can || s.coinsDoubled);
             doubleCoinsBtn.interactable = can;
             UIFactory.SetButtonLabel(doubleCoinsBtn, s.coinsDoubled ? "COINS DOUBLED!" : "WATCH AD: x2 COINS (+" + s.coins + ")");
+            if (s.coinsDoubled && doubleCoinsBtn.gameObject.activeInHierarchy)
+                doubleCoinsBtn.GetComponent<UIButtonFeel>()?.Punch();
             RefreshEnergyUI();
         }
 
@@ -375,34 +457,40 @@ namespace TurtleBlaster
         // =====================================================================
         void BuildEnergyOverlay(Transform parent)
         {
-            energyOverlay = FullScreen(parent, "OutOfEnergy", new Color(0, 0, 0, 0.65f));
-            var panel = UIFactory.PanelBox(energyOverlay, "Panel", new Color(0.17f, 0.18f, 0.3f));
+            energyOverlay = FullScreen(parent, "OutOfEnergy", new Color(0.03f, 0.04f, 0.10f, 0.76f));
+            var panel = UIFactory.PanelBox(energyOverlay, "Panel", UIFactory.CardBg);
             UIFactory.Place((RectTransform)panel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1020, 560));
 
+            var glow = UIFactory.Image(panel.transform, "IconGlow", SpriteLibrary.Get("ui_glow"), new Color(1f, 0.72f, 0.18f, 0.36f));
+            UIFactory.Place((RectTransform)glow.transform, new Vector2(0.5f, 1), new Vector2(0, -14), new Vector2(128, 128), new Vector2(0.5f, 1));
             var icon = UIFactory.Image(panel.transform, "Icon", SpriteLibrary.Get("energy"), Color.white);
+            icon.preserveAspect = true;
             UIFactory.Place((RectTransform)icon.transform, new Vector2(0.5f, 1), new Vector2(0, -34), new Vector2(60, 78), new Vector2(0.5f, 1));
 
-            var t = UIFactory.Label(panel.transform, "OUT OF ENERGY!", 84, UIFactory.Accent);
-            UIFactory.Place((RectTransform)t.transform, new Vector2(0.5f, 1), new Vector2(0, -118), new Vector2(960, 100), new Vector2(0.5f, 1));
+            var t = UIFactory.Label(panel.transform, "OUT OF ENERGY!", 80, UIFactory.Accent);
+            UIFactory.Place((RectTransform)t.transform, new Vector2(0.5f, 1), new Vector2(0, -120), new Vector2(960, 96), new Vector2(0.5f, 1));
 
-            var sub = UIFactory.Label(panel.transform, "Each run costs 1 energy.\nRefills 1 every 15 minutes (max 5).", 32, Color.white);
-            UIFactory.Place((RectTransform)sub.transform, new Vector2(0.5f, 1), new Vector2(0, -230), new Vector2(940, 86), new Vector2(0.5f, 1));
+            var sub = UIFactory.Label(panel.transform, "Each run costs 1 energy.\nRefills 1 every 15 minutes (max 5).", 30, UIFactory.TextMuted);
+            UIFactory.Place((RectTransform)sub.transform, new Vector2(0.5f, 1), new Vector2(0, -226), new Vector2(940, 82), new Vector2(0.5f, 1));
 
-            energyOverlayTimerText = UIFactory.Label(panel.transform, "", 30, new Color(0.75f, 0.9f, 1f));
-            UIFactory.Place((RectTransform)energyOverlayTimerText.transform, new Vector2(0.5f, 1), new Vector2(0, -330), new Vector2(940, 44), new Vector2(0.5f, 1));
+            var tPill = UIFactory.GlassPill(panel.transform, "TimerPill", UIFactory.SlotDark);
+            UIFactory.Place((RectTransform)tPill.transform, new Vector2(0.5f, 1), new Vector2(0, -324), new Vector2(780, 62), new Vector2(0.5f, 1));
+            energyOverlayTimerText = UIFactory.Label(tPill.transform, "", 32, new Color(0.78f, 0.92f, 1f));
+            var trt = (RectTransform)energyOverlayTimerText.transform; trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one; trt.offsetMin = trt.offsetMax = Vector2.zero;
 
-            energyOverlayAdBtn = UIFactory.MakeButton(panel.transform, "WATCH AD (+1 ENERGY)", new Color(0.85f, 0.55f, 0.1f), () =>
+            energyOverlayAdBtn = UIFactory.MakeButton(panel.transform, "WATCH AD (+1 ENERGY)", UIFactory.Amber, () =>
             {
                 gm.WatchAdForEnergy(ok =>
                 {
                     if (ok && SaveData.Current.energy > 0) HideOutOfEnergy();
                 });
-            }, new Vector2(520, 108), 36);
+            }, new Vector2(520, 108), 34);
             UIFactory.Place((RectTransform)energyOverlayAdBtn.transform, new Vector2(0.5f, 0), new Vector2(-175, 42), new Vector2(520, 108));
 
-            var close = UIFactory.MakeButton(panel.transform, "CLOSE", UIFactory.Panel, HideOutOfEnergy, new Vector2(290, 108), 40);
+            var close = UIFactory.MakeButton(panel.transform, "CLOSE", UIFactory.Panel, HideOutOfEnergy, new Vector2(290, 108), 38);
             UIFactory.Place((RectTransform)close.transform, new Vector2(0.5f, 0), new Vector2(265, 42), new Vector2(290, 108));
 
+            UIPanelMotion.Attach(energyOverlay, (RectTransform)panel.transform, 0.15f);
             energyOverlay.gameObject.SetActive(false);
         }
 
@@ -445,6 +533,10 @@ namespace TurtleBlaster
 
             if (menuEnergyText != null) menuEnergyText.text = energyStr;
             if (menuEnergyTimerText != null) { menuEnergyTimerText.text = nextStr; menuEnergyTimerText.color = timerCol; }
+            Color pipEmpty = UIFactory.SlotDark;
+            Color pipFilled = e <= 1 ? UIFactory.Bad : UIFactory.Accent;
+            for (int i = 0; i < menuEnergyPips.Length; i++)
+                if (menuEnergyPips[i] != null) menuEnergyPips[i].color = i < e ? pipFilled : pipEmpty;
             if (menuEnergyAdBtn != null)
             {
                 menuEnergyAdBtn.interactable = canAd;
@@ -454,6 +546,8 @@ namespace TurtleBlaster
 
             if (summaryEnergyText != null) summaryEnergyText.text = energyStr;
             if (summaryEnergyTimerText != null) { summaryEnergyTimerText.text = nextStr; summaryEnergyTimerText.color = timerCol; }
+            for (int i = 0; i < summaryEnergyPips.Length; i++)
+                if (summaryEnergyPips[i] != null) summaryEnergyPips[i].color = i < e ? pipFilled : pipEmpty;
             if (summaryEnergyAdBtn != null)
             {
                 summaryEnergyAdBtn.interactable = canAd;
@@ -482,47 +576,84 @@ namespace TurtleBlaster
         // =====================================================================
         void BuildDailyRewardOverlay(Transform parent)
         {
-            dailyRewardOverlay = FullScreen(parent, "DailyRewards", new Color(0, 0, 0, 0.72f));
-            var panel = UIFactory.PanelBox(dailyRewardOverlay, "Panel", new Color(0.14f, 0.16f, 0.28f));
+            dailyRewardOverlay = FullScreen(parent, "DailyRewards", new Color(0.03f, 0.04f, 0.10f, 0.78f));
+            var panel = UIFactory.PanelBox(dailyRewardOverlay, "Panel", UIFactory.CardBg);
             UIFactory.Place((RectTransform)panel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1560, 760));
+            UIFactory.AddTopAccent(panel.transform, UIFactory.Accent, 7f, 22f);
 
-            var title = UIFactory.Label(panel.transform, "7-DAY LOGIN REWARDS", 60, UIFactory.Accent);
-            UIFactory.Place((RectTransform)title.transform, new Vector2(0.5f, 1), new Vector2(0, -24), new Vector2(1400, 72), new Vector2(0.5f, 1));
-            dailyStatusText = UIFactory.Label(panel.transform, "", 28, new Color(0.82f, 0.9f, 1f));
-            UIFactory.Place((RectTransform)dailyStatusText.transform, new Vector2(0.5f, 1), new Vector2(0, -96), new Vector2(1400, 38), new Vector2(0.5f, 1));
+            var title = UIFactory.Label(panel.transform, "7-DAY LOGIN REWARDS", 58, UIFactory.Accent);
+            UIFactory.Place((RectTransform)title.transform, new Vector2(0.5f, 1), new Vector2(0, -26), new Vector2(1400, 70), new Vector2(0.5f, 1));
+            dailyStatusText = UIFactory.Label(panel.transform, "", 30, UIFactory.TextMuted);
+            UIFactory.Place((RectTransform)dailyStatusText.transform, new Vector2(0.5f, 1), new Vector2(0, -96), new Vector2(1400, 42), new Vector2(0.5f, 1));
 
+            var dailyMotion = UIPanelMotion.Attach(dailyRewardOverlay, (RectTransform)panel.transform, 0.15f);
             var pos = new[]
             {
                 new Vector2(-540, 105), new Vector2(-180, 105), new Vector2(180, 105), new Vector2(540, 105),
                 new Vector2(-430, -110), new Vector2(-70, -110), new Vector2(365, -110),
             };
             var rewards = SaveData.DailyRewards;
+            var entries = new List<(string sprite, string text, Color color)>(3);
             for (int i = 0; i < rewards.Length; i++)
             {
                 var r = rewards[i];
                 float cardW = r.day == 7 ? 480f : 330f;
-                var card = UIFactory.PanelBox(panel.transform, "DayCard_" + r.day, new Color(0.20f, 0.22f, 0.36f));
-                UIFactory.Place((RectTransform)card.transform, new Vector2(0.5f, 0.5f), pos[i], new Vector2(cardW, 195));
+                var card = UIFactory.PanelBox(panel.transform, "DayCard_" + r.day, new Color(0.23f, 0.17f, 0.14f));
+                var cardRt = (RectTransform)card.transform;
+                UIFactory.Place(cardRt, new Vector2(0.5f, 0.5f), pos[i], new Vector2(cardW, 202));
+                var acc = UIFactory.AddTopAccent(card.transform, r.day == 7 ? UIFactory.Purple : UIFactory.Panel, 8f, 14f);
+                dailyMotion.AddStagger(cardRt);
 
-                var dayTitle = UIFactory.Label(card.transform, r.day == 7 ? "DAY 7 - GRAND PRIZE" : "DAY " + r.day, 26, UIFactory.Accent);
-                UIFactory.Place((RectTransform)dayTitle.transform, new Vector2(0.5f, 1), new Vector2(0, -10), new Vector2(cardW - 20, 32), new Vector2(0.5f, 1));
+                var dayTitle = UIFactory.Label(card.transform, r.day == 7 ? "DAY 7 - GRAND PRIZE" : "DAY " + r.day, 28, UIFactory.Accent);
+                UIFactory.Place((RectTransform)dayTitle.transform, new Vector2(0.5f, 1), new Vector2(0, -24), new Vector2(cardW - 20, 34), new Vector2(0.5f, 1));
 
-                var icon = UIFactory.Image(card.transform, "Icon", SpriteLibrary.Get(r.iconSprite), Color.white);
-                UIFactory.Place((RectTransform)icon.transform, new Vector2(0.5f, 1), new Vector2(0, -44), new Vector2(44, 44), new Vector2(0.5f, 1));
+                entries.Clear();
+                if (r.coins > 0) entries.Add(("coin", "+" + r.coins, UIFactory.Accent));
+                if (r.parts > 0) entries.Add(("part", "+" + r.parts, new Color(0.60f, 0.85f, 1f)));
+                if (r.fullEnergy) entries.Add(("energy", "FULL", UIFactory.Good));
 
-                var rewardLbl = UIFactory.Label(card.transform, r.label, r.day == 7 ? 21 : 23, Color.white, TextAnchor.MiddleCenter);
-                UIFactory.Place((RectTransform)rewardLbl.transform, new Vector2(0.5f, 0), new Vector2(0, 44), new Vector2(cardW - 24, 62), new Vector2(0.5f, 0));
+                bool single = entries.Count == 1;
+                float iconW = single ? 36f : 30f;
+                float iconTextGap = 8f;
+                float charW = single ? 18f : 16f;
+                float itemGap = 20f;
+                int fontSize = single ? 32 : 28;
 
-                var status = UIFactory.Label(card.transform, "", 20, UIFactory.Good);
-                UIFactory.Place((RectTransform)status.transform, new Vector2(0.5f, 0), new Vector2(0, 10), new Vector2(cardW - 24, 28), new Vector2(0.5f, 0));
+                float totalRowW = 0f;
+                for (int k = 0; k < entries.Count; k++)
+                {
+                    float textW = entries[k].text.Length * charW + 4f;
+                    totalRowW += iconW + iconTextGap + textW;
+                    if (k > 0) totalRowW += itemGap;
+                }
 
-                dailyCards.Add(new DailyCard { reward = r, bg = card, status = status });
+                float curX = -totalRowW * 0.5f;
+                for (int k = 0; k < entries.Count; k++)
+                {
+                    var e = entries[k];
+                    float iconH = e.sprite == "energy" ? (single ? 42f : 36f) : iconW;
+                    float textW = e.text.Length * charW + 4f;
+
+                    var ic = UIFactory.Image(card.transform, "RewardIcon_" + k, SpriteLibrary.Get(e.sprite), Color.white);
+                    ic.preserveAspect = true;
+                    UIFactory.Place((RectTransform)ic.transform, new Vector2(0.5f, 0.5f), new Vector2(curX + iconW * 0.5f, -2f), new Vector2(iconW, iconH), new Vector2(0.5f, 0.5f));
+
+                    var lbl = UIFactory.Label(card.transform, e.text, fontSize, e.color, TextAnchor.MiddleLeft);
+                    UIFactory.Place((RectTransform)lbl.transform, new Vector2(0.5f, 0.5f), new Vector2(curX + iconW + iconTextGap, -2f), new Vector2(textW + 24f, 44f), new Vector2(0f, 0.5f));
+
+                    curX += iconW + iconTextGap + textW + itemGap;
+                }
+
+                var status = UIFactory.Label(card.transform, "", 26, UIFactory.Good);
+                UIFactory.Place((RectTransform)status.transform, new Vector2(0.5f, 0), new Vector2(0, 12), new Vector2(cardW - 24, 32), new Vector2(0.5f, 0));
+
+                dailyCards.Add(new DailyCard { reward = r, cardRt = cardRt, accent = acc, bg = card, status = status });
             }
 
-            dailyClaimBtn = UIFactory.MakeButton(panel.transform, "CLAIM", new Color(0.2f, 0.7f, 0.3f), () => gm.ClaimDailyLoginReward(out _), new Vector2(400, 96), 42);
-            UIFactory.Place((RectTransform)dailyClaimBtn.transform, new Vector2(0.5f, 0), new Vector2(-190, 36), new Vector2(400, 96));
-            var close = UIFactory.MakeButton(panel.transform, "CLOSE", UIFactory.Panel, HideDailyRewards, new Vector2(300, 96), 40);
-            UIFactory.Place((RectTransform)close.transform, new Vector2(0.5f, 0), new Vector2(250, 36), new Vector2(300, 96));
+            dailyClaimBtn = UIFactory.MakeButton(panel.transform, "CLAIM", UIFactory.Good, () => gm.ClaimDailyLoginReward(out _), new Vector2(400, 94), 40);
+            UIFactory.Place((RectTransform)dailyClaimBtn.transform, new Vector2(0.5f, 0), new Vector2(-190, 34), new Vector2(400, 94));
+            var close = UIFactory.MakeButton(panel.transform, "CLOSE", UIFactory.Panel, HideDailyRewards, new Vector2(300, 94), 38);
+            UIFactory.Place((RectTransform)close.transform, new Vector2(0.5f, 0), new Vector2(250, 34), new Vector2(300, 94));
 
             dailyRewardOverlay.gameObject.SetActive(false);
         }
@@ -548,7 +679,17 @@ namespace TurtleBlaster
 
             if (dailyRewardBtn != null)
             {
+                var feel = dailyRewardBtn.GetComponent<UIButtonFeel>();
+                if (feel != null) feel.idlePulse = canClaimToday;
                 var img = (Image)dailyRewardBtn.targetGraphic;
+                var lbl = dailyRewardBtn.GetComponentInChildren<Text>();
+                if (dailyDoneCheck != null) dailyDoneCheck.gameObject.SetActive(!canClaimToday);
+                if (lbl != null)
+                {
+                    var lrt = (RectTransform)lbl.transform;
+                    lrt.offsetMin = new Vector2(12, 10);
+                    lrt.offsetMax = canClaimToday ? new Vector2(-12, -2) : new Vector2(-44, -2);
+                }
                 if (canClaimToday)
                 {
                     UIFactory.SetButtonLabel(dailyRewardBtn, "DAILY REWARD (DAY " + (nextDayIndex + 1) + "!)");
@@ -556,7 +697,7 @@ namespace TurtleBlaster
                 }
                 else
                 {
-                    UIFactory.SetButtonLabel(dailyRewardBtn, "DAILY REWARDS (DONE)");
+                    UIFactory.SetButtonLabel(dailyRewardBtn, "DAILY REWARDS");
                     if (img != null) img.color = UIFactory.Panel;
                 }
             }
@@ -571,6 +712,8 @@ namespace TurtleBlaster
 
             if (dailyClaimBtn != null)
             {
+                var feel = dailyClaimBtn.GetComponent<UIButtonFeel>();
+                if (feel != null) feel.idlePulse = canClaimToday;
                 dailyClaimBtn.interactable = canClaimToday;
                 dailyClaimBtn.targetGraphic.color = canClaimToday ? new Color(0.2f, 0.72f, 0.32f) : new Color(0.35f, 0.35f, 0.45f);
                 UIFactory.SetButtonLabel(dailyClaimBtn, canClaimToday ? "CLAIM DAY " + (nextDayIndex + 1) : "CLAIMED TODAY");
@@ -583,21 +726,24 @@ namespace TurtleBlaster
                 bool isToday = canClaimToday && i == nextDayIndex;
                 if (claimed)
                 {
-                    c.bg.color = new Color(0.16f, 0.36f, 0.24f);
+                    c.bg.color = new Color(0.16f, 0.34f, 0.21f);
+                    if (c.accent != null) c.accent.color = UIFactory.Good;
                     c.status.text = "CLAIMED";
                     c.status.color = UIFactory.Good;
                 }
                 else if (isToday)
                 {
-                    c.bg.color = new Color(0.32f, 0.30f, 0.56f);
+                    c.bg.color = new Color(0.38f, 0.28f, 0.12f);
+                    if (c.accent != null) c.accent.color = UIFactory.Accent;
                     c.status.text = "TODAY!";
                     c.status.color = UIFactory.Accent;
                 }
                 else
                 {
-                    c.bg.color = c.reward.day == 7 ? new Color(0.30f, 0.20f, 0.40f) : new Color(0.19f, 0.21f, 0.34f);
+                    c.bg.color = c.reward.day == 7 ? new Color(0.32f, 0.18f, 0.36f) : new Color(0.23f, 0.17f, 0.14f);
+                    if (c.accent != null) c.accent.color = c.reward.day == 7 ? UIFactory.Purple : new Color(0.50f, 0.38f, 0.28f);
                     c.status.text = "DAY " + c.reward.day;
-                    c.status.color = new Color(0.7f, 0.78f, 0.92f);
+                    c.status.color = UIFactory.TextMuted;
                 }
             }
         }
@@ -607,22 +753,26 @@ namespace TurtleBlaster
         // =====================================================================
         void BuildRevive(Transform parent)
         {
-            reviveOverlay = FullScreen(parent, "Revive", new Color(0, 0, 0, 0.55f));
-            var panel = UIFactory.PanelBox(reviveOverlay, "Panel", new Color(0.17f, 0.18f, 0.3f));
+            reviveOverlay = FullScreen(parent, "Revive", new Color(0.03f, 0.04f, 0.10f, 0.66f));
+            var panel = UIFactory.PanelBox(reviveOverlay, "Panel", UIFactory.CardBg);
             UIFactory.Place((RectTransform)panel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(960, 560));
-            var t = UIFactory.Label(panel.transform, "REVIVE?", 110, UIFactory.Accent);
-            UIFactory.Place((RectTransform)t.transform, new Vector2(0.5f, 1), new Vector2(0, -40), new Vector2(900, 130), new Vector2(0.5f, 1));
-            var sub = UIFactory.Label(panel.transform, "Watch a short ad and keep riding from here", 36, Color.white);
-            UIFactory.Place((RectTransform)sub.transform, new Vector2(0.5f, 1), new Vector2(0, -180), new Vector2(900, 50), new Vector2(0.5f, 1));
+            UIFactory.AddTopAccent(panel.transform, UIFactory.Good, 7f, 22f);
+            var t = UIFactory.Label(panel.transform, "REVIVE?", 104, UIFactory.Accent);
+            UIFactory.Place((RectTransform)t.transform, new Vector2(0.5f, 1), new Vector2(0, -40), new Vector2(900, 124), new Vector2(0.5f, 1));
+            var sub = UIFactory.Label(panel.transform, "Watch a short ad and keep riding from here", 34, UIFactory.TextMuted);
+            UIFactory.Place((RectTransform)sub.transform, new Vector2(0.5f, 1), new Vector2(0, -174), new Vector2(900, 48), new Vector2(0.5f, 1));
             reviveBar = UIFactory.Bar(panel.transform, "Timer", UIFactory.Accent, new Vector2(760, 34), out var barRoot);
-            UIFactory.Place(barRoot, new Vector2(0.5f, 1), new Vector2(0, -260), new Vector2(760, 34), new Vector2(0.5f, 1));
-            reviveTimerText = UIFactory.Label(panel.transform, "", 30, new Color(0.8f, 0.85f, 1f));
-            UIFactory.Place((RectTransform)reviveTimerText.transform, new Vector2(0.5f, 1), new Vector2(0, -305), new Vector2(900, 40), new Vector2(0.5f, 1));
+            UIFactory.Place(barRoot, new Vector2(0.5f, 1), new Vector2(0, -252), new Vector2(760, 34), new Vector2(0.5f, 1));
+            reviveTimerText = UIFactory.Label(panel.transform, "", 32, new Color(0.8f, 0.88f, 1f));
+            UIFactory.Place((RectTransform)reviveTimerText.transform, new Vector2(0.5f, 1), new Vector2(0, -300), new Vector2(900, 40), new Vector2(0.5f, 1));
 
-            var yes = UIFactory.MakeButton(panel.transform, "WATCH AD", new Color(0.2f, 0.7f, 0.3f), () => ReviveChoose(true), new Vector2(400, 110), 50);
+            var yes = UIFactory.MakeButton(panel.transform, "WATCH AD", UIFactory.Good, () => ReviveChoose(true), new Vector2(400, 110), 48);
             UIFactory.Place((RectTransform)yes.transform, new Vector2(0.5f, 0), new Vector2(-215, 40), new Vector2(400, 110));
-            var no = UIFactory.MakeButton(panel.transform, "NO THANKS", UIFactory.Panel, () => ReviveChoose(false), new Vector2(360, 110), 44);
+            var yesFeel = yes.GetComponent<UIButtonFeel>();
+            if (yesFeel != null) yesFeel.idlePulse = true;
+            var no = UIFactory.MakeButton(panel.transform, "NO THANKS", UIFactory.Panel, () => ReviveChoose(false), new Vector2(360, 110), 42);
             UIFactory.Place((RectTransform)no.transform, new Vector2(0.5f, 0), new Vector2(215, 40), new Vector2(360, 110));
+            UIPanelMotion.Attach(reviveOverlay, (RectTransform)panel.transform, 0.15f);
             reviveOverlay.gameObject.SetActive(false);
         }
 
@@ -661,6 +811,7 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)adClaimBtn.transform, new Vector2(0.5f, 0.2f), Vector2.zero, new Vector2(540, 120));
             var skip = UIFactory.MakeButton(adOverlay, "SKIP (no reward)", UIFactory.Panel, () => CloseAd(false), new Vector2(360, 70), 28);
             UIFactory.Place((RectTransform)skip.transform, new Vector2(1, 1), new Vector2(-40, -40), new Vector2(360, 70));
+            UIPanelMotion.Attach(adOverlay, null, 0.14f);
             adOverlay.gameObject.SetActive(false);
         }
 
@@ -688,9 +839,10 @@ namespace TurtleBlaster
 
         void BuildPurchaseOverlay(Transform parent)
         {
-            purchaseOverlay = FullScreen(parent, "MockPurchase", new Color(0, 0, 0, 0.7f));
-            var panel = UIFactory.PanelBox(purchaseOverlay, "Panel", new Color(0.95f, 0.95f, 0.97f));
+            purchaseOverlay = FullScreen(parent, "MockPurchase", new Color(0.03f, 0.04f, 0.10f, 0.74f));
+            var panel = UIFactory.PanelBox(purchaseOverlay, "Panel", new Color(0.95f, 0.96f, 0.99f));
             UIFactory.Place((RectTransform)panel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1000, 520));
+            UIFactory.AddTopAccent(panel.transform, UIFactory.Good, 7f, 22f);
             var t = UIFactory.Label(panel.transform, "TEST PURCHASE", 64, new Color(0.15f, 0.15f, 0.25f));
             UIFactory.Place((RectTransform)t.transform, new Vector2(0.5f, 1), new Vector2(0, -40), new Vector2(900, 90), new Vector2(0.5f, 1));
             purchaseText = UIFactory.Label(panel.transform, "", 36, new Color(0.15f, 0.15f, 0.25f), TextAnchor.MiddleCenter, FontStyle.Normal);
@@ -702,6 +854,7 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)buy.transform, new Vector2(0.5f, 0), new Vector2(-210, 40), new Vector2(380, 100));
             var cancel = UIFactory.MakeButton(panel.transform, "CANCEL", new Color(0.8f, 0.3f, 0.3f), () => ClosePurchase(false), new Vector2(340, 100), 44);
             UIFactory.Place((RectTransform)cancel.transform, new Vector2(0.5f, 0), new Vector2(210, 40), new Vector2(340, 100));
+            UIPanelMotion.Attach(purchaseOverlay, (RectTransform)panel.transform, 0.15f);
             purchaseOverlay.gameObject.SetActive(false);
         }
 
@@ -750,10 +903,10 @@ namespace TurtleBlaster
             }
         }
 
-        void RefreshExtrasWallet(string wallet)
+        void RefreshExtrasWallet(int coins, int parts)
         {
-            if (skinsWallet != null) skinsWallet.text = wallet;
-            if (shopWallet != null) shopWallet.text = wallet;
+            skinsWallet?.Set(coins, parts);
+            shopWallet?.Set(coins, parts);
             if (skinsScreen != null && skinsScreen.gameObject.activeSelf) RefreshSkins();
         }
     }

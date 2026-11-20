@@ -30,6 +30,7 @@ namespace TurtleBlaster
     public class Pickup : MonoBehaviour
     {
         public PickupType type;
+        public bool collected;
         float baseY;
         float phase;
         bool magnetized;
