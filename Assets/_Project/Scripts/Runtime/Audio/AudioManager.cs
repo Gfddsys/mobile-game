@@ -229,4 +229,70 @@ namespace TurtleBlaster
             return clip;
         }
     }
+
+    /// <summary>
+    /// Mobile tactile haptic feedback (Light / Medium / Heavy pulses on Android via VibrationEffect,
+    /// with Handheld.Vibrate fallback on iOS). Respects SaveData.Current.sfxOn.
+    /// </summary>
+    public static class Haptics
+    {
+        static float lastPulseTime = -10f;
+#if UNITY_ANDROID && !UNITY_EDITOR
+        static AndroidJavaObject vibrator;
+        static AndroidJavaClass vibrationEffectClass;
+        static int sdkInt = -1;
+        static bool initAttempted;
+#endif
+
+        public static void Light() => Pulse(16, 75, false);
+        public static void Medium() => Pulse(34, 155, false);
+        public static void Heavy() => Pulse(75, 255, true);
+
+        static void Pulse(long milliseconds, int amplitude, bool isHeavy)
+        {
+            if (Application.isBatchMode) return;
+            if (SaveData.Current != null && !SaveData.Current.sfxOn) return;
+            float now = Time.unscaledTime;
+            if (!isHeavy && now - lastPulseTime < 0.055f) return;
+            lastPulseTime = now;
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Keep reference so Unity automatically adds android.permission.VIBRATE to AndroidManifest.xml
+            if (false) Handheld.Vibrate();
+            try
+            {
+                if (!initAttempted)
+                {
+                    initAttempted = true;
+                    using (var version = new AndroidJavaClass("android.os.Build$VERSION"))
+                        sdkInt = version.GetStatic<int>("SDK_INT");
+                    using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
+                    using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
+                    {
+                        if (activity != null)
+                            vibrator = activity.Call<AndroidJavaObject>("getSystemService", "vibrator");
+                    }
+                    if (sdkInt >= 26)
+                        vibrationEffectClass = new AndroidJavaClass("android.os.VibrationEffect");
+                }
+
+                if (vibrator != null)
+                {
+                    if (sdkInt >= 26 && vibrationEffectClass != null)
+                    {
+                        using (var effect = vibrationEffectClass.CallStatic<AndroidJavaObject>("createOneShot", milliseconds, Mathf.Clamp(amplitude, 1, 255)))
+                            vibrator.Call("vibrate", effect);
+                    }
+                    else
+                    {
+                        vibrator.Call("vibrate", milliseconds);
+                    }
+                }
+            }
+            catch (System.Exception) { /* ignore on devices without vibrator */ }
+#elif UNITY_IOS && !UNITY_EDITOR
+            if (isHeavy) Handheld.Vibrate();
+#endif
+        }
+    }
 }

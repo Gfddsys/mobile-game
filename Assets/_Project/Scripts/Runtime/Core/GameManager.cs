@@ -39,6 +39,10 @@ namespace TurtleBlaster
         int currentBiome = -1;
         Texture2D snapshot;
         Coroutine dyingRoutine;
+        GhostRunData activeRecording;
+        PreviousRunGhost activeGhost;
+        float runElapsedTime;
+        float nextGhostSampleTime;
         readonly System.Collections.Generic.List<GameObject> owned = new System.Collections.Generic.List<GameObject>();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -107,6 +111,8 @@ namespace TurtleBlaster
             if (Instance != this) return;
             Instance = null;
             Time.timeScale = 1f;
+            GameInput.ClearAttract();
+            if (activeGhost != null) Destroy(activeGhost.gameObject);
             if (Player != null) Player.Dispose();
             foreach (var go in owned)
             {
@@ -146,6 +152,8 @@ namespace TurtleBlaster
 
         void Update()
         {
+            if (GameInput.BackPressed) HandleBackNavigation();
+
             energyCheckTimer += Time.unscaledDeltaTime;
             if (energyCheckTimer >= 0.5f)
             {
@@ -159,6 +167,14 @@ namespace TurtleBlaster
 
                 if (State == GameState.Playing && Player.Alive)
                 {
+                    runElapsedTime += Time.deltaTime;
+                    if (activeRecording != null && runElapsedTime >= nextGhostSampleTime)
+                    {
+                        activeRecording.RecordSample(runElapsedTime, Player, World);
+                        nextGhostSampleTime = runElapsedTime + 0.04f;
+                    }
+                    if (activeGhost != null) activeGhost.UpdateAt(runElapsedTime);
+
                     float dist = Mathf.Max(0f, Player.transform.position.x - startX);
                     Stats.distance = Mathf.Max(Stats.distance, dist);   // a revive restarts a bit behind; never count backwards
                     dist = Stats.distance;
@@ -185,15 +201,138 @@ namespace TurtleBlaster
                         }
                     }
                 }
-                else if (State == GameState.Menu)
+                else if (IsMenuOrSubmenu(State))
                 {
-                    // attract mode: the turtle cruises along by itself behind the menu
+                    // attract mode: auto-play bot rides endlessly behind Menu / Garage / Skins / Shop / Ranks
                     menuResetTimer += Time.deltaTime;
-                    if (!Player.Alive && menuResetTimer > 1.5f || Player.transform.position.x > 700f) StartAttractMode();
-                    if (Player.Alive) menuResetTimer = 0f;
+                    if (!Player.Alive && menuResetTimer > 1.5f) StartAttractMode();
+                    if (Player.Alive)
+                    {
+                        menuResetTimer = 0f;
+                        DriveAttractBot();
+                    }
                 }
             }
         }
+
+        void DriveAttractBot()
+        {
+            var p = Player;
+            if (p == null || !p.Alive || World == null) return;
+            if (p.Fuel01 < 0.35f) p.RefillFuel(0.65f);
+
+            GameInput.UseAttract = true;
+            var rb = p.Body;
+            Vector2 pos = rb.position;
+            float vx = Mathf.Max(6f, p.SpeedX);
+            float groundHere = World.HeightAt(pos.x);
+            float slopeHere = World.SlopeDegAt(pos.x);
+
+            bool wantJump = false;
+            bool wantDuck = false;
+            bool wantThrust = false;
+            bool wantFlipCCW = false;
+            bool wantFlipCW = false;
+
+            // Scan ahead for hazards, rails, and pickups
+            var hits = Physics2D.OverlapBoxAll(
+                pos + new Vector2(vx * 0.42f, 1.0f),
+                new Vector2(vx * 0.95f + 3f, 4.5f),
+                0f);
+
+            float nearestGroundHazardDx = float.MaxValue;
+            bool nearestGroundIsHeavy = false;
+            bool airHazardOverhead = false;
+            float nearestRailDx = float.MaxValue;
+
+            for (int i = 0; i < hits.Length; i++)
+            {
+                var c = hits[i];
+                if (c == null) continue;
+
+                if (c.TryGetComponent<Hazard>(out var hz))
+                {
+                    Bounds b = c.bounds;
+                    float dxFront = b.min.x - pos.x;
+                    float dxBack = b.max.x - pos.x;
+
+                    if (hz.isAir)
+                    {
+                        // Air hazard (Sign, Cable, Bird): duck while approaching and passing underneath
+                        if (dxBack > -0.8f && dxFront < vx * 0.48f)
+                            airHazardOverhead = true;
+                    }
+                    else
+                    {
+                        // Ground hazard (Cone, Pothole, Boulder)
+                        if (dxBack > -0.2f && dxFront < nearestGroundHazardDx)
+                        {
+                            nearestGroundHazardDx = dxFront;
+                            nearestGroundIsHeavy = hz.heavy;
+                        }
+                    }
+                }
+                else if (c.TryGetComponent<Rail>(out _))
+                {
+                    float dx = c.bounds.min.x - pos.x;
+                    if (dx > 0.8f && dx < nearestRailDx) nearestRailDx = dx;
+                }
+            }
+
+            if (p.IsGrounded)
+            {
+                if (airHazardOverhead && nearestGroundHazardDx > 2.5f)
+                {
+                    wantDuck = true;
+                }
+                else if (nearestGroundHazardDx < Mathf.Clamp(vx * 0.30f, 2.2f, 4.2f))
+                {
+                    wantJump = true;
+                    if (nearestGroundIsHeavy) wantThrust = true;
+                }
+                else if (!airHazardOverhead && nearestRailDx < Mathf.Clamp(vx * 0.28f, 2.0f, 3.6f))
+                {
+                    wantJump = true;
+                }
+
+                // Use thruster on steep uphills so the bot keeps momentum
+                if (!wantDuck && slopeHere > 11f && p.SpeedX < cfg.cruiseSpeed * 0.88f && p.Fuel01 > 0.20f)
+                    wantThrust = true;
+            }
+            else
+            {
+                // Airborne: extend jump with thrust if clearing a boulder, otherwise level the board to the landing slope
+                if (nearestGroundIsHeavy && nearestGroundHazardDx > -1.0f && nearestGroundHazardDx < 2.8f && p.Fuel01 > 0.15f)
+                    wantThrust = true;
+
+                float heightAboveGround = pos.y - groundHere;
+                float landX = pos.x + Mathf.Max(0.6f, rb.linearVelocity.x * 0.38f);
+                float desiredAngle = World.SlopeDegAt(landX);
+
+                // If high in the air and rising, occasionally spin a backflip, else steer for a Perfect/Clean landing
+                if (heightAboveGround > 2.3f && rb.linearVelocity.y > 0.5f && !airHazardOverhead)
+                {
+                    wantFlipCCW = true;
+                }
+                else
+                {
+                    float cur = Mathf.DeltaAngle(0f, rb.rotation);
+                    float diff = Mathf.DeltaAngle(cur, desiredAngle) - rb.angularVelocity * 0.11f;
+                    if (diff > 4f) wantFlipCCW = true;
+                    else if (diff < -4f) wantFlipCW = true;
+                }
+            }
+
+            if (wantJump) GameInput.AttractJump = true;
+            GameInput.AttractUp = wantThrust;
+            GameInput.AttractDown = wantDuck;
+            GameInput.AttractLeft = wantFlipCCW;
+            GameInput.AttractRight = wantFlipCW;
+        }
+
+        bool IsMenuOrSubmenu(GameState s) =>
+            s == GameState.Menu || s == GameState.Garage || s == GameState.Skins ||
+            s == GameState.Shop || s == GameState.Leaderboard;
 
         // =====================================================================
         // Flow
@@ -201,10 +340,12 @@ namespace TurtleBlaster
         public void ShowMenu()
         {
             Time.timeScale = 1f;
+            bool keepAttractRun = IsMenuOrSubmenu(State) && Player != null && Player.Alive;
             State = GameState.Menu;
             StopDying();
             UI.ShowMenu();
-            StartAttractMode();
+            if (!keepAttractRun) StartAttractMode();
+            else GameInput.UseAttract = true;
             AudioManager.StartMusic();
         }
 
@@ -222,8 +363,12 @@ namespace TurtleBlaster
         void StartAttractMode()
         {
             menuResetTimer = 0f;
+            activeRecording = null; // discard any incomplete run that did not actually finish
+            if (activeGhost != null) { Destroy(activeGhost.gameObject); activeGhost = null; }
             SpawnPlayer(Random.Range(0, 100000));
             GameInput.ClearOverride();
+            GameInput.ClearAttract();
+            GameInput.UseAttract = true;
         }
 
         void CheckEnergyRefill(bool showFullPopup)
@@ -272,11 +417,27 @@ namespace TurtleBlaster
 
             Time.timeScale = 1f;
             StopDying();
+            GameInput.ClearAttract();
+            if (activeGhost != null) { Destroy(activeGhost.gameObject); activeGhost = null; }
             SpawnPlayer(seed >= 0 ? seed : Random.Range(0, 1000000));
             Stats = new RunStats();
             Combo = 0; bonusScore = 0; grindScore = 0f;
             startX = Player.transform.position.x;
             currentBiome = LevelBiomes.GetIndex(startX);
+
+            // Start recording this run (only saved if the run actually ends in FinishRun),
+            // and spawn the replay ghost from the last completed run.
+            runElapsedTime = 0f;
+            nextGhostSampleTime = 0.04f;
+            activeRecording = new GhostRunData
+            {
+                skinId = SaveData.Current.selectedSkin,
+                thrusterTier = Mathf.Clamp(SaveData.Current.GetLevel(UpgradeId.JetThruster), 0, 2)
+            };
+            activeRecording.RecordSample(0f, Player, World);
+            if (PreviousRunGhost.LastCompletedRun != null)
+                activeGhost = PreviousRunGhost.Create(PreviousRunGhost.LastCompletedRun, World);
+
             State = GameState.Playing;
             UI.ShowHud();
             AudioManager.StartMusic();
@@ -314,8 +475,57 @@ namespace TurtleBlaster
 
         public void QuitRun()
         {
+            // Quitting mid-run does not count as a finished run: discard activeRecording
+            activeRecording = null;
+            if (activeGhost != null) { Destroy(activeGhost.gameObject); activeGhost = null; }
             Time.timeScale = 1f;
             ShowMenu();
+        }
+
+        /// <summary>
+        /// Android Back-swipe gesture / Edge-swipe / Keyboard (Escape or Backspace):
+        /// returns to the previous screen, pauses/resumes during a run, or prompts to exit from the Main Menu.
+        /// </summary>
+        public void HandleBackNavigation()
+        {
+            if (UI != null && UI.TryHandleOverlayBack()) return;
+
+            switch (State)
+            {
+                case GameState.Garage:
+                case GameState.Skins:
+                case GameState.Shop:
+                case GameState.Leaderboard:
+                case GameState.Summary:
+                    AudioManager.Sfx("click");
+                    ShowMenu();
+                    break;
+                case GameState.Playing:
+                    AudioManager.Sfx("click");
+                    Pause();
+                    break;
+                case GameState.Paused:
+                    AudioManager.Sfx("click");
+                    Resume();
+                    break;
+                case GameState.Menu:
+                    AudioManager.Sfx("click");
+                    if (UI != null) UI.ShowQuitConfirm();
+                    else QuitApplication();
+                    break;
+            }
+        }
+
+        public void QuitApplication()
+        {
+            SaveData.Current.RefreshEnergy();
+            SyncEnergyNotification();
+            SaveData.Current.Save();
+#if UNITY_EDITOR
+            UnityEditor.EditorApplication.isPlaying = false;
+#else
+            Application.Quit();
+#endif
         }
 
         void StopDying()
@@ -354,6 +564,7 @@ namespace TurtleBlaster
                     bonusScore += Mathf.RoundToInt(cfg.pointsPerPerfect * ComboMultiplier);
                     UI.Popup("PERFECT! +" + Mathf.RoundToInt(cfg.perfectSpeedBoost * 100) + "% SPEED", UIFactory.Good);
                     AudioManager.Sfx("perfect");
+                    Haptics.Light();
                     break;
                 case LandingGrade.Clean:
                     UI.Popup("CLEAN LANDING", Color.white, 48);
@@ -362,6 +573,7 @@ namespace TurtleBlaster
                     Combo = 0;
                     UI.Popup("ROUGH LANDING -" + Mathf.RoundToInt(cfg.roughSpeedPenalty * 100) + "%", UIFactory.Bad);
                     AudioManager.Sfx("rough");
+                    Haptics.Medium();
                     Cam.Shake(0.25f);
                     break;
             }
@@ -372,6 +584,7 @@ namespace TurtleBlaster
             if (!Active) return;
             UI.Popup("FLIP x" + count + "!", UIFactory.Accent, 56);
             AudioManager.Sfx("flip", 0.8f, 1f + count * 0.1f);
+            Haptics.Light();
         }
 
         void OnFlipsCommitted(int count)
@@ -403,24 +616,28 @@ namespace TurtleBlaster
                     bonusScore += cfg.pointsPerPart;
                     UI.Popup("SPARE PART!", new Color(0.6f, 0.85f, 1f), 52);
                     AudioManager.Sfx("part");
+                    Haptics.Light();
                     break;
                 case PickupType.Magnet:
                     Player.GrantMagnet(8f);
                     bonusScore += 30;
                     UI.Popup("COIN MAGNET!", new Color(1f, 0.45f, 0.75f), 58);
                     AudioManager.Sfx("boost", 0.75f, 1.2f);
+                    Haptics.Light();
                     break;
                 case PickupType.Fuel:
                     Player.RefillFuel(0.5f);
                     bonusScore += 30;
                     UI.Popup("FUEL +50%!", UIFactory.Good, 58);
                     AudioManager.Sfx("perfect", 0.8f, 1.1f);
+                    Haptics.Light();
                     break;
                 case PickupType.Shield:
                     Player.AddFreeHit(1);
                     bonusScore += 30;
                     UI.Popup("+1 SHELL SHIELD!", new Color(0.4f, 0.9f, 1f), 58);
                     AudioManager.Sfx("part", 0.85f, 1.15f);
+                    Haptics.Light();
                     break;
             }
         }
@@ -433,6 +650,7 @@ namespace TurtleBlaster
             bonusScore += pts;
             UI.Popup("CLOSE CALL! +" + pts, new Color(1f, 0.6f, 0.2f), 54);
             AudioManager.Sfx("flip", 0.7f, 1.35f);
+            Haptics.Light();
         }
 
         void OnHazardHandled(Hazard hz, bool smashed)
@@ -448,6 +666,7 @@ namespace TurtleBlaster
                 UI.Popup("BLOCKED! (" + Player.FreeHitsLeft + " left)", new Color(0.6f, 0.85f, 1f), 52);
             }
             AudioManager.Sfx("hit", 0.8f);
+            Haptics.Medium();
             Cam.Shake(smashed ? 0.15f : 0.3f);
         }
 
@@ -458,6 +677,7 @@ namespace TurtleBlaster
             {
                 UI.Popup("SUPER BOOST!", UIFactory.Accent, 96);
                 AudioManager.Sfx("boost");
+                Haptics.Medium();
                 Cam.Shake(0.2f);
             }
         }
@@ -471,15 +691,18 @@ namespace TurtleBlaster
 
         void OnCrashed(string cause)
         {
-            if (State == GameState.Menu)
+            if (IsMenuOrSubmenu(State))
             {
                 AudioManager.Sfx("crash", 0.4f);
                 return;
             }
             if (State != GameState.Playing) return;
+            if (activeRecording != null && Player != null && World != null)
+                activeRecording.RecordSample(runElapsedTime, Player, World);
             Stats.causeOfDeath = cause;
             State = GameState.Dying;
             AudioManager.Sfx("crash");
+            Haptics.Heavy();
             Cam.Shake(0.6f);
             Cam.SetTarget(Player.FocusTarget, false);
             dyingRoutine = StartCoroutine(DyingRoutine());
@@ -673,6 +896,14 @@ namespace TurtleBlaster
 
         void FinishRun()
         {
+            // Commit the recorded ghost ONLY now that the run has actually ended
+            if (activeRecording != null && activeRecording.frames.Count > 1 && Stats.distance >= 1f)
+            {
+                activeRecording.finalDistance = Stats.distance;
+                PreviousRunGhost.LastCompletedRun = activeRecording;
+            }
+            activeRecording = null;
+
             var save = SaveData.Current;
             var sk = SkinDatabase.Get(save.selectedSkin);
             if (sk != null && sk.coinBonusMult > 1.01f)

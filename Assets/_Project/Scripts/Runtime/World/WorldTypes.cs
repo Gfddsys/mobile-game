@@ -76,27 +76,56 @@ namespace TurtleBlaster
         }
     }
 
-    /// <summary>Moves a bird left and flaps its wings.</summary>
+    /// <summary>Moves a bird left and flaps its wings once the player is nearby, tracking ground height so it never drifts into impossible heights.</summary>
     public class BirdFlyer : MonoBehaviour
     {
-        public float speed = 3.5f;
+        public float speed = 2.3f;
+        public float wakeDistance = 26f;
         SpriteRenderer sr;
         float t;
+        float hoverHeight = 1.9f;
+        bool initialized;
 
         void Awake() { sr = GetComponent<SpriteRenderer>(); }
 
+        void Start()
+        {
+            if (GameManager.Instance != null && GameManager.Instance.World != null)
+            {
+                float gy = GameManager.Instance.World.HeightAt(transform.position.x);
+                hoverHeight = Mathf.Clamp(transform.position.y - gy, 1.68f, 2.25f);
+                initialized = true;
+            }
+        }
+
         void Update()
         {
-            transform.position += Vector3.left * (speed * Time.deltaTime);
             t += Time.deltaTime;
             if (sr != null) sr.sprite = SpriteLibrary.Get(((int)(t * 8f) & 1) == 0 ? "bird_0" : "bird_1");
+
+            var gm = GameManager.Instance;
+            if (gm == null || gm.Player == null || gm.World == null) return;
+            if (!initialized)
+            {
+                hoverHeight = Mathf.Clamp(transform.position.y - gm.World.HeightAt(transform.position.x), 1.68f, 2.25f);
+                initialized = true;
+            }
+
+            float dx = transform.position.x - gm.Player.transform.position.x;
+            if (dx > wakeDistance) return;
+
+            var p = transform.position;
+            p.x -= speed * Time.deltaTime;
+            float targetY = gm.World.HeightAt(p.x) + hoverHeight;
+            p.y = Mathf.Lerp(p.y, targetY, 1f - Mathf.Exp(-8f * Time.deltaTime));
+            transform.position = p;
         }
     }
 
     /// <summary>A boulder sleeps until the player gets close, then rolls toward them.</summary>
     public class Boulder : MonoBehaviour
     {
-        public float wakeDistance = 34f;
+        public float wakeDistance = 26f;
         Rigidbody2D rb;
         bool awake;
 
@@ -114,8 +143,8 @@ namespace TurtleBlaster
             {
                 awake = true;
                 rb.simulated = true;
-                rb.linearVelocity = new Vector2(-4f, 0f);
-                rb.angularVelocity = 120f;
+                rb.linearVelocity = new Vector2(-2.5f, 0f);
+                rb.angularVelocity = 90f;
             }
         }
     }

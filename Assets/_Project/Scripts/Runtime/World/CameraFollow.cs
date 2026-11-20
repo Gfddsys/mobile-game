@@ -65,7 +65,7 @@ namespace TurtleBlaster
 
             float speed = 0f;
             var rb = target.GetComponent<Rigidbody2D>();
-            if (rb != null) speed = rb.linearVelocity.magnitude;
+            if (rb != null) speed = Mathf.Abs(rb.linearVelocity.x);
             bool super = GameManager.Instance != null && GameManager.Instance.Player != null && GameManager.Instance.Player.SuperBoost;
             float targetSize = baseSize + Mathf.Clamp((speed - 9f) * 0.14f, 0f, maxExtraSize) + (super ? 0.55f : 0f);
             size = Mathf.SmoothDamp(size, targetSize, ref velSize, 0.7f, Mathf.Infinity, Time.unscaledDeltaTime);

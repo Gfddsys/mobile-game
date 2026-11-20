@@ -410,6 +410,7 @@ namespace TurtleBlaster
         public static void ResetAll()
         {
             PlayerPrefs.DeleteKey(Key);
+            PreviousRunGhost.LastCompletedRun = null;
             _current = Repair(new SaveData());
             _current.Changed?.Invoke();
         }

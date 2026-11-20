@@ -22,10 +22,10 @@ MonoBehaviour:
   thrustAccel: 20
   thrustLift: 32
   slamAccel: 30
-  maxWheelieAngle: 12
-  maxNoseDownAngle: 8
-  groundLevelStiffness: 0.8
-  groundLevelDamping: 12
+  maxWheelieAngle: 3
+  maxNoseDownAngle: 2
+  groundLevelStiffness: 6.5
+  groundLevelDamping: 1.1
   groundLevelMaxTorque: 60
   bodyCrashSpeed: 7
   perfectAngle: 15

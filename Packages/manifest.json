@@ -1,5 +1,6 @@
 {
   "dependencies": {
+    "com.unity.inputsystem": "1.20.1",
     "com.unity.mobile.notifications": "2.5.0",
     "com.unity.services.leaderboards": "2.3.4",
     "com.unity.services.levelplay": "9.6.0",

@@ -180,6 +180,8 @@ namespace TurtleBlaster
             if (cam == null) return;
             var cp = cam.transform.position;
             float vh = cam.ViewHeight, vw = cam.ViewWidth;
+            float baseVh = cam.baseSize * 2f;
+            float baseVw = baseVh * cam.Cam.aspect;
 
             LevelBiomes.Evaluate(cp.x, out int fromIdx, out int toIdx, out float blend);
             Color atmosTint = EvaluateBiomeTint(cp.x, out float nightWeight);
@@ -211,14 +213,14 @@ namespace TurtleBlaster
                 skyNext.enabled = false;
             }
 
-            // twinkling stars
+            // twinkling stars (use fixed reference view size so camera zoom never slides them sideways)
             float starAlpha = Mathf.Clamp01(Mathf.Max(nightWeight, Mathf.Lerp(biomeA.extraStarAlpha, biomeB.extraStarAlpha, blend)));
             for (int i = 0; i < stars.Count; i++)
             {
                 var ssr = stars[i];
                 var off = starOffsets[i];
-                float sx = cp.x + off.x * vw;
-                float sy = cp.y + off.y * vh;
+                float sx = cp.x + off.x * baseVw * 1.35f;
+                float sy = cp.y + off.y * baseVh * 1.25f;
                 ssr.transform.position = new Vector3(sx, sy, 4f);
                 float twinkle = 0.55f + 0.45f * Mathf.Sin(Time.time * 3.8f + i * 1.9f);
                 ssr.color = new Color(1f, 0.97f, 0.82f, starAlpha * twinkle * 0.9f);
@@ -227,13 +229,14 @@ namespace TurtleBlaster
             bool blendingHills = blend > 0.001f && toIdx != fromIdx;
             foreach (var l in layers)
             {
-                // scale hills with the view height so they always read as backdrop
-                float sc = vh / 12.4f;
+                // Keep a constant world tile width (independent of dynamic camera zoom vh)
+                // so hill tiles never whip sideways when jumping or zooming at large X distances.
+                const float sc = 1.25f;
                 float tw = l.tileWidth * sc;
                 float position = cp.x * (1f - l.parallax);
                 float rel = cp.x * l.parallax;
                 float baseX = Mathf.Floor(rel / tw) * tw;
-                float y = cp.y - vh * 0.5f + vh * l.yAnchor;
+                float y = cp.y - baseVh * 0.5f + baseVh * l.yAnchor;
 
                 Color hillBase = l.baseTint * Color.Lerp(Color.white, atmosTint, 0.55f);
                 Color fromCol = hillBase;

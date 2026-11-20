@@ -20,10 +20,12 @@ namespace TurtleBlaster
         public static IEnumerable<string> Names => generators.Keys;
 
         static Material spriteMaterial;
+        static Material terrainMaterial;
+        static Texture2D terrainTexture;
 
         /// <summary>
         /// Unity's built-in sprite material (always included in builds). Works with
-        /// vertex colours, so it is also used for the terrain mesh and particles.
+        /// vertex colours, so it is also used for particles and trails.
         /// </summary>
         public static Material SpriteMaterial
         {
@@ -37,6 +39,71 @@ namespace TurtleBlaster
                 }
                 return spriteMaterial;
             }
+        }
+
+        /// <summary>
+        /// Point-filtered 16-PPU pixel-art material used by the procedural terrain mesh.
+        /// Tinted by biome vertex colours (turf cap + dithered dirt strata &amp; pixel pebbles).
+        /// </summary>
+        public static Material TerrainMaterial
+        {
+            get
+            {
+                if (terrainMaterial == null)
+                {
+                    terrainMaterial = new Material(SpriteMaterial)
+                    {
+                        name = "TerrainPixelMaterial",
+                        mainTexture = GetTerrainTexture()
+                    };
+                }
+                return terrainMaterial;
+            }
+        }
+
+        public const int TerrainTexWidth = 16;
+        public const int TerrainTexHeight = 160;
+
+        static Texture2D GetTerrainTexture()
+        {
+            if (terrainTexture != null) return terrainTexture;
+            const int W = TerrainTexWidth;
+            const int H = TerrainTexHeight;
+            var px = new Color32[W * H];
+
+            Color32 GrayVal(byte v) => new Color32(v, v, v, 255);
+            Color32 outline = new Color32(36, 28, 44, 255); // clean #1b1b2f pixel outline
+
+            // Rows 0..151: clean, flat pixel-art dirt (matching the simple flat style of all other game sprites)
+            for (int y = 0; y < 152; y++)
+            {
+                int depth = 151 - y;
+                // Simple flat bands: a 2px shadow lip right under the turf, then clean solid dirt
+                byte v = depth < 2 ? (byte)185 : (byte)242;
+                for (int x = 0; x < W; x++)
+                    px[y * W + x] = GrayVal(v);
+            }
+
+            // Rows 152..159: simple 8-pixel turf band (1px top outline, 1px highlight, 5px solid fill, 1px bottom outline)
+            for (int x = 0; x < W; x++)
+            {
+                px[159 * W + x] = outline;          // 1px dark top outline
+                px[158 * W + x] = GrayVal(255);     // 1px top highlight
+                for (int y = 153; y <= 157; y++)
+                    px[y * W + x] = GrayVal(236);   // 5px clean solid turf body
+                px[152 * W + x] = outline;          // 1px dark line separating turf from dirt
+            }
+
+            terrainTexture = new Texture2D(W, H, TextureFormat.RGBA32, false)
+            {
+                name = "TerrainPixelTex",
+                filterMode = FilterMode.Point,
+                wrapModeU = TextureWrapMode.Repeat,
+                wrapModeV = TextureWrapMode.Clamp
+            };
+            terrainTexture.SetPixels32(px);
+            terrainTexture.Apply(false, false);
+            return terrainTexture;
         }
 
         /// <summary>Every sprite name an artist can replace (Resources/Sprites/{name}.png), including skins.</summary>
@@ -407,6 +474,10 @@ namespace TurtleBlaster
             g["ui_shield"] = UiShield;
             g["ui_checker"] = UiChecker;
             g["ui_check"] = UiCheck;
+            g["ui_sfx_on"] = () => UiSfx(true);
+            g["ui_sfx_off"] = () => UiSfx(false);
+            g["ui_music_on"] = () => UiMusic(true);
+            g["ui_music_off"] = () => UiMusic(false);
 
             return g;
         }
@@ -966,45 +1037,26 @@ namespace TurtleBlaster
 
         static Sprite UiTouch()
         {
-            const int w = 20, h = 20;
+            const int w = 16, h = 16;
             var c = new PixelCanvas(w, h);
-            var ink = PixelCanvas.C("#241711");
-            var shad = new Color32(20, 12, 8, 110);
-            var lipDark = new Color32(138, 126, 118, 220);
-            var lip = new Color32(168, 156, 146, 225);
-            var seam = new Color32(84, 70, 60, 230);
-            var faceLow = new Color32(214, 208, 198, 195);
-            var faceHigh = new Color32(242, 236, 228, 205);
-            var creamHi = new Color32(255, 250, 240, 235);
-            var boltHi = new Color32(235, 242, 250, 245);
-            var boltLo = new Color32(140, 152, 170, 240);
+            var ink = new Color32(27, 27, 47, 190);
+            var rimHi = new Color32(255, 255, 255, 185);
+            var body = new Color32(235, 240, 248, 145);
+            var low = new Color32(195, 205, 220, 155);
 
-            c.Rect(2, 0, 16, 1, shad);
-            c.Rect(2, 1, 16, 1, ink);
-            c.Set(1, 2, ink); c.Rect(2, 2, 16, 1, lipDark); c.Set(18, 2, ink);
-            c.Set(0, 3, ink); c.Rect(1, 3, 18, 1, lip); c.Set(19, 3, ink);
-            c.Set(0, 4, ink); c.Rect(1, 4, 18, 1, seam); c.Set(19, 4, ink);
-
-            for (int y = 5; y <= 15; y++)
+            // Clean, simple rounded pixel button without corner bolts or heavy 3D seams
+            c.Rect(2, 0, 12, 1, ink);
+            c.Set(1, 1, ink); c.Rect(2, 1, 12, 1, low); c.Set(14, 1, ink);
+            for (int y = 2; y <= 13; y++)
             {
                 c.Set(0, y, ink);
-                c.Set(1, y, creamHi);
-                c.Rect(2, y, 16, 1, y <= 9 ? faceLow : faceHigh);
-                c.Set(18, y, lip);
-                c.Set(19, y, ink);
+                c.Rect(1, y, 14, 1, y <= 3 ? low : body);
+                c.Set(15, y, ink);
             }
+            c.Set(1, 14, ink); c.Rect(2, 14, 12, 1, rimHi); c.Set(14, 14, ink);
+            c.Rect(2, 15, 12, 1, ink);
 
-            c.Set(0, 16, ink); c.Rect(1, 16, 18, 1, creamHi); c.Set(19, 16, ink);
-            c.Set(1, 17, ink); c.Rect(2, 17, 16, 1, creamHi); c.Set(18, 17, ink);
-            c.Rect(2, 18, 16, 1, ink);
-
-            // Corner bolts inside the 9-slice corners
-            c.Set(2, 6, boltHi); c.Set(3, 6, boltLo); c.Set(2, 5, boltLo); c.Set(3, 5, ink);
-            c.Set(16, 6, boltHi); c.Set(17, 6, boltLo); c.Set(16, 5, boltLo); c.Set(17, 5, ink);
-            c.Set(2, 16, boltHi); c.Set(3, 16, boltLo); c.Set(2, 15, boltLo); c.Set(3, 15, ink);
-            c.Set(16, 16, boltHi); c.Set(17, 16, boltLo); c.Set(16, 15, boltLo); c.Set(17, 15, ink);
-
-            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(5, 7, 5, 5));
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f), new Vector4(4, 4, 4, 4));
         }
 
         static Sprite UiGlow()
@@ -1176,6 +1228,76 @@ namespace TurtleBlaster
                 c.Set(x, y - 1, body);
                 c.Set(x, y + 1, hi);
             }
+            c.Outline(K);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiSfx(bool on)
+        {
+            const int s = 16;
+            var c = new PixelCanvas(s, s);
+            Color32 body = on ? White : Gray;
+            // speaker body + cone
+            c.Rect(2, 6, 3, 4, body);
+            c.Rect(5, 5, 1, 6, body);
+            c.Rect(6, 4, 1, 8, body);
+            c.Rect(7, 3, 2, 10, body);
+
+            if (on)
+            {
+                // inner + outer sound waves
+                c.Set(10, 10, Yellow);
+                c.Rect(11, 7, 1, 2, Yellow);
+                c.Set(10, 5, Yellow);
+
+                c.Set(12, 12, Yellow);
+                c.Rect(13, 6, 1, 4, Yellow);
+                c.Set(13, 10, Yellow);
+                c.Set(13, 5, Yellow);
+                c.Set(12, 3, Yellow);
+            }
+            else
+            {
+                // red mute X
+                for (int i = 0; i < 5; i++)
+                {
+                    c.Set(10 + i, 6 + i, Red);
+                    c.Set(10 + i, 10 - i, Red);
+                }
+            }
+
+            c.Outline(K);
+            return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
+        }
+
+        static Sprite UiMusic(bool on)
+        {
+            const int s = 16;
+            var c = new PixelCanvas(s, s);
+            Color32 note = on ? White : Gray;
+
+            // left & right note heads
+            c.Rect(2, 3, 3, 2, note);
+            c.Rect(3, 2, 2, 4, note);
+            c.Rect(9, 4, 3, 2, note);
+            c.Rect(10, 3, 2, 4, note);
+
+            // stems & top beam
+            c.Rect(4, 5, 2, 7, note);
+            c.Rect(11, 6, 2, 7, note);
+            c.Rect(4, 11, 4, 2, note);
+            c.Rect(7, 12, 6, 2, note);
+
+            if (!on)
+            {
+                // red diagonal mute slash
+                for (int i = 0; i < 11; i++)
+                {
+                    c.Set(2 + i, 12 - i, Red);
+                    c.Set(3 + i, 12 - i, Red);
+                }
+            }
+
             c.Outline(K);
             return c.ToSprite(100f, new Vector2(0.5f, 0.5f));
         }

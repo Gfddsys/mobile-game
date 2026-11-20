@@ -124,6 +124,19 @@ namespace TurtleBlaster.EditorTools
         void OnPreprocessTexture()
         {
             string path = assetPath.Replace('\\', '/');
+            if (path == ProjectSetup.AppIconPath)
+            {
+                var iconImporter = (TextureImporter)assetImporter;
+                iconImporter.textureType = TextureImporterType.Default;
+                iconImporter.npotScale = TextureImporterNPOTScale.None;
+                iconImporter.filterMode = FilterMode.Point;
+                iconImporter.textureCompression = TextureImporterCompression.Uncompressed;
+                iconImporter.mipmapEnabled = false;
+                iconImporter.alphaIsTransparency = true;
+                iconImporter.wrapMode = TextureWrapMode.Clamp;
+                iconImporter.isReadable = true;
+                return;
+            }
             if (!path.StartsWith(ArtTools.OverrideDir + "/") && !path.StartsWith(ArtTools.PlaceholderDir + "/")) return;
 
             var importer = (TextureImporter)assetImporter;

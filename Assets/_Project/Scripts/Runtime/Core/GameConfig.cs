@@ -51,11 +51,11 @@ namespace TurtleBlaster
         public float jumpKickTime = 0.08f;
 
         [Header("Ground handling")]
-        [Tooltip("Max nose-up lean (degrees from the slope) while holding Pitch Up on the ground")]
-        public float maxWheelieAngle = 12f;
-        public float maxNoseDownAngle = 8f;
-        public float groundLevelStiffness = 0.8f;
-        public float groundLevelDamping = 12f;
+        [Tooltip("Max nose-up lean (degrees from the slope) while holding Pitch Up")]
+        public float maxWheelieAngle = 3f;
+        public float maxNoseDownAngle = 2f;
+        public float groundLevelStiffness = 6.5f;
+        public float groundLevelDamping = 1.1f;
         public float groundLevelMaxTorque = 60f;
         [Tooltip("Shell/deck touching the ground faster than this (m/s) is a fatal crash")]
         public float bodyCrashSpeed = 7f;

@@ -31,8 +31,9 @@ namespace TurtleBlaster
         UIFactory.WalletDisplay menuWallet;
         Text menuEnergyText, menuEnergyTimerText;
         Button menuEnergyAdBtn, dailyRewardBtn;
-        Image dailyDoneCheck;
+        Image dailyDoneCheck, sfxIconImg, musicIconImg;
         Button sfxBtn, musicBtn;
+        UIIconToggle sfxToggle, musicToggle;
         readonly Image[] menuEnergyPips = new Image[SaveData.MaxEnergy];
 
         // garage widgets
@@ -83,6 +84,7 @@ namespace TurtleBlaster
             BuildPause(go.transform);
             BuildExtras(go.transform);
             HideAll();
+            UIBootFade.PlayOnce(go.transform);
 
             SaveData.Current.Changed += RefreshWallets;
         }
@@ -208,14 +210,16 @@ namespace TurtleBlaster
                 menuMissionText.text = "MISSION: " + m.title;
                 if (menuMissionRewardText != null) menuMissionRewardText.text = "+" + m.rewardCoins;
             }
-            if (sfxBtn != null)
+            if (sfxToggle != null) sfxToggle.SetState(s.sfxOn);
+            else if (sfxBtn != null)
             {
-                UIFactory.SetButtonLabel(sfxBtn, "SFX " + (s.sfxOn ? "ON" : "OFF"));
+                if (sfxIconImg != null) sfxIconImg.sprite = SpriteLibrary.Get(s.sfxOn ? "ui_sfx_on" : "ui_sfx_off");
                 sfxBtn.targetGraphic.color = s.sfxOn ? new Color(0.18f, 0.48f, 0.68f) : new Color(0.24f, 0.27f, 0.38f);
             }
-            if (musicBtn != null)
+            if (musicToggle != null) musicToggle.SetState(s.musicOn);
+            else if (musicBtn != null)
             {
-                UIFactory.SetButtonLabel(musicBtn, "MUSIC " + (s.musicOn ? "ON" : "OFF"));
+                if (musicIconImg != null) musicIconImg.sprite = SpriteLibrary.Get(s.musicOn ? "ui_music_on" : "ui_music_off");
                 musicBtn.targetGraphic.color = s.musicOn ? new Color(0.18f, 0.48f, 0.68f) : new Color(0.24f, 0.27f, 0.38f);
             }
             if (garage != null && garage.gameObject.activeSelf) RefreshGarage();
@@ -373,7 +377,7 @@ namespace TurtleBlaster
             var pauseBtn = UIFactory.MakeButton(hud, "", UIFactory.Panel, () => gm.Pause(), new Vector2(98, 98), 44);
             UIFactory.Place((RectTransform)pauseBtn.transform, new Vector2(1, 1), new Vector2(-24, -20), new Vector2(98, 98));
             var pIcon = UIFactory.Image(pauseBtn.transform, "PauseIcon", SpriteLibrary.Get("ui_pause"), Color.white);
-            UIFactory.Place((RectTransform)pIcon.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 3), new Vector2(44, 44));
+            UIFactory.Place((RectTransform)pIcon.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 8), new Vector2(44, 44));
 
             BuildTouchControls(hud);
             UIPanelMotion.Attach(hud, null, 0.14f);
@@ -382,37 +386,35 @@ namespace TurtleBlaster
         void BuildTouchControls(Transform parent)
         {
             touchRoot = UIFactory.Stretch("TouchControls", parent);
-            var blue = new Color(UIFactory.Blue.r * 0.85f, UIFactory.Blue.g * 0.85f, UIFactory.Blue.b * 0.85f, 0.82f);
-            var orange = new Color(UIFactory.Amber.r * 0.90f, UIFactory.Amber.g * 0.90f, UIFactory.Amber.b * 0.90f, 0.82f);
-            var green = new Color(UIFactory.Good.r * 0.85f, UIFactory.Good.g * 0.85f, UIFactory.Good.b * 0.85f, 0.82f);
+            var blue = new Color(UIFactory.Blue.r * 0.85f, UIFactory.Blue.g * 0.85f, UIFactory.Blue.b * 0.85f, 0.52f);
+            var orange = new Color(UIFactory.Amber.r * 0.90f, UIFactory.Amber.g * 0.90f, UIFactory.Amber.b * 0.90f, 0.52f);
+            var green = new Color(UIFactory.Good.r * 0.85f, UIFactory.Good.g * 0.85f, UIFactory.Good.b * 0.85f, 0.52f);
 
-            // Left thumb: vertical axis (Pitch Up / Pitch Down)
-            TouchButton("Up", "THRUST", "ui_arrow", false, false, blue, new Vector2(0, 0), new Vector2(50, 280), v => GameInput.TouchUp = v);
-            TouchButton("Down", "SLAM", "ui_arrow", true, false, blue, new Vector2(0, 0), new Vector2(50, 48), v => GameInput.TouchDown = v);
-            // Right thumb: horizontal axis (Backflip / Frontflip)
-            TouchButton("Jump", "JUMP", "ui_arrow", false, false, green, new Vector2(1, 0), new Vector2(-50, 280), v => { if (v) GameInput.TouchJump = true; });
-            TouchButton("Back", "BACKFLIP", "ui_flip", false, false, orange, new Vector2(1, 0), new Vector2(-290, 48), v => GameInput.TouchLeft = v);
-            TouchButton("Front", "FRONTFLIP", "ui_flip", false, true, orange, new Vector2(1, 0), new Vector2(-50, 48), v => GameInput.TouchRight = v);
+            // Left thumb: vertical axis (Thrust / Slam-Duck)
+            TouchButton("Up", "ui_arrow", false, false, blue, new Vector2(0, 0), new Vector2(46, 294), v => GameInput.TouchUp = v);
+            TouchButton("Down", "ui_arrow", true, false, blue, new Vector2(0, 0), new Vector2(46, 44), v => GameInput.TouchDown = v);
+            // Right thumb: Jump + horizontal axis (Backflip / Frontflip)
+            TouchButton("Jump", "ui_arrow", false, false, green, new Vector2(1, 0), new Vector2(-46, 294), v => { if (v) GameInput.TouchJump = true; });
+            TouchButton("Back", "ui_flip", false, false, orange, new Vector2(1, 0), new Vector2(-296, 44), v => GameInput.TouchLeft = v);
+            TouchButton("Front", "ui_flip", false, true, orange, new Vector2(1, 0), new Vector2(-46, 44), v => GameInput.TouchRight = v);
         }
 
-        void TouchButton(string name, string caption, string icon, bool flipY, bool flipX, Color color,
+        void TouchButton(string name, string icon, bool flipY, bool flipX, Color color,
             Vector2 anchor, Vector2 pos, System.Action<bool> onHold)
         {
             var img = UIFactory.Image(touchRoot, "Touch_" + name, SpriteLibrary.Get("ui_touch"), color, true);
             img.pixelsPerUnitMultiplier = 0.25f;
             img.raycastTarget = true;
             var rt = (RectTransform)img.transform;
-            UIFactory.Place(rt, anchor, new Vector2(pos.x, pos.y), new Vector2(210, 210), new Vector2(anchor.x, 0));
+            UIFactory.Place(rt, anchor, new Vector2(pos.x, pos.y), new Vector2(224, 224), new Vector2(anchor.x, 0));
             var hb = img.gameObject.AddComponent<HoldButton>();
             hb.OnHold = onHold;
 
-            var ic = UIFactory.Image(rt, "Icon", SpriteLibrary.Get(icon), new Color(1, 1, 1, 0.96f));
+            var ic = UIFactory.Image(rt, "Icon", SpriteLibrary.Get(icon), new Color(1, 1, 1, 0.92f));
+            ic.preserveAspect = true;
             var irt = (RectTransform)ic.transform;
-            UIFactory.Place(irt, new Vector2(0.5f, 0.60f), Vector2.zero, new Vector2(88, 88));
+            UIFactory.Place(irt, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(106, 106));
             irt.localScale = new Vector3(flipX ? -1f : 1f, flipY ? -1f : 1f, 1f);
-
-            var cap = UIFactory.Label(rt, caption, 32, Color.white);
-            UIFactory.Place((RectTransform)cap.transform, new Vector2(0.5f, 0.23f), Vector2.zero, new Vector2(196, 44));
         }
 
         void Update()
@@ -634,21 +636,21 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)mTurtle.transform, new Vector2(0.5f, 0.5f), new Vector2(-1, 16), new Vector2(117, 90), new Vector2(0.5f, 0.5f));
 
             // Hero CTA + 2x2 action grid on right
-            var ctaAnchor = new Vector2(0.76f, 0.28f);
+            var ctaAnchor = new Vector2(0.75f, 0.30f);
             var ctaPivot = new Vector2(0.5f, 0.5f);
-            var play = UIFactory.MakeButton(menu, "PLAY", UIFactory.Good, () => gm.StartRun(), new Vector2(520, 136), 68);
-            UIFactory.Place((RectTransform)play.transform, ctaAnchor, new Vector2(0, 114), new Vector2(520, 136), ctaPivot);
-            UIFactory.AddButtonIcon(play, "ui_play", new Vector2(44, 44), 42f);
+            var play = UIFactory.MakeButton(menu, "PLAY", UIFactory.Good, () => gm.StartRun(), new Vector2(560, 146), 72);
+            UIFactory.Place((RectTransform)play.transform, ctaAnchor, new Vector2(0, 128), new Vector2(560, 146), ctaPivot);
+            UIFactory.AddButtonIcon(play, "ui_play", new Vector2(48, 48), 46f);
             play.GetComponent<UIButtonFeel>().idlePulse = true;
 
-            var gar = UIFactory.MakeButton(menu, "GARAGE", UIFactory.Blue, () => gm.OpenGarage(), new Vector2(252, 92), 36);
-            UIFactory.Place((RectTransform)gar.transform, ctaAnchor, new Vector2(-134, -18), new Vector2(252, 92), ctaPivot);
-            var skinsBtn = UIFactory.MakeButton(menu, "SKINS", UIFactory.Purple, () => gm.OpenSkins(), new Vector2(252, 92), 36);
-            UIFactory.Place((RectTransform)skinsBtn.transform, ctaAnchor, new Vector2(134, -18), new Vector2(252, 92), ctaPivot);
-            var shopBtn = UIFactory.MakeButton(menu, "SHOP", UIFactory.Amber, () => gm.OpenShop(), new Vector2(252, 92), 36);
-            UIFactory.Place((RectTransform)shopBtn.transform, ctaAnchor, new Vector2(-134, -128), new Vector2(252, 92), ctaPivot);
-            var ranksBtn = UIFactory.MakeButton(menu, "RANKS", UIFactory.Panel, () => gm.OpenLeaderboard(), new Vector2(252, 92), 36);
-            UIFactory.Place((RectTransform)ranksBtn.transform, ctaAnchor, new Vector2(134, -128), new Vector2(252, 92), ctaPivot);
+            var gar = UIFactory.MakeButton(menu, "GARAGE", UIFactory.Blue, () => gm.OpenGarage(), new Vector2(272, 106), 40);
+            UIFactory.Place((RectTransform)gar.transform, ctaAnchor, new Vector2(-144, -14), new Vector2(272, 106), ctaPivot);
+            var skinsBtn = UIFactory.MakeButton(menu, "SKINS", UIFactory.Purple, () => gm.OpenSkins(), new Vector2(272, 106), 40);
+            UIFactory.Place((RectTransform)skinsBtn.transform, ctaAnchor, new Vector2(144, -14), new Vector2(272, 106), ctaPivot);
+            var shopBtn = UIFactory.MakeButton(menu, "SHOP", UIFactory.Amber, () => gm.OpenShop(), new Vector2(272, 106), 40);
+            UIFactory.Place((RectTransform)shopBtn.transform, ctaAnchor, new Vector2(-144, -134), new Vector2(272, 106), ctaPivot);
+            var ranksBtn = UIFactory.MakeButton(menu, "RANKS", UIFactory.Panel, () => gm.OpenLeaderboard(), new Vector2(272, 106), 40);
+            UIFactory.Place((RectTransform)ranksBtn.transform, ctaAnchor, new Vector2(144, -134), new Vector2(272, 106), ctaPivot);
 
             // Bottom-left progress glass card (Best + Active Mission)
             var progBox = UIFactory.PanelBox(menu, "ProgressCard", UIFactory.GlassDark);
@@ -665,32 +667,46 @@ namespace TurtleBlaster
 
             // Top-right wallet pill + audio toggles
             menuWallet = UIFactory.WalletPill(menu, "WalletPill", UIFactory.GlassDark,
-                new Vector2(1, 1), new Vector2(-36, -24), new Vector2(468, 68));
+                new Vector2(1, 1), new Vector2(-36, -24), new Vector2(468, 72));
 
-            sfxBtn = UIFactory.MakeButton(menu, "SFX ON", UIFactory.Panel, () => { var s = SaveData.Current; s.sfxOn = !s.sfxOn; s.Save(); }, new Vector2(226, 62), 30);
-            UIFactory.Place((RectTransform)sfxBtn.transform, new Vector2(1, 1), new Vector2(-278, -104), new Vector2(226, 62));
-            musicBtn = UIFactory.MakeButton(menu, "MUSIC ON", UIFactory.Panel, () => { var s = SaveData.Current; s.musicOn = !s.musicOn; s.Save(); }, new Vector2(226, 62), 30);
-            UIFactory.Place((RectTransform)musicBtn.transform, new Vector2(1, 1), new Vector2(-36, -104), new Vector2(226, 62));
+            Color audioOnCol = new Color(0.18f, 0.48f, 0.68f);
+            Color audioOffCol = new Color(0.24f, 0.27f, 0.38f);
+
+            sfxBtn = UIFactory.MakeButton(menu, "", UIFactory.Panel, () => { var s = SaveData.Current; s.sfxOn = !s.sfxOn; s.Save(); }, new Vector2(104, 104), 30);
+            sfxBtn.gameObject.name = "Button_SFX";
+            UIFactory.Place((RectTransform)sfxBtn.transform, new Vector2(1, 1), new Vector2(-154, -108), new Vector2(104, 104));
+            sfxIconImg = UIFactory.Image(sfxBtn.transform, "SfxIcon", SpriteLibrary.Get("ui_sfx_on"), Color.white);
+            sfxIconImg.preserveAspect = true;
+            UIFactory.Place((RectTransform)sfxIconImg.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 8), new Vector2(54, 54));
+            sfxToggle = UIIconToggle.Attach(sfxBtn, sfxIconImg, SpriteLibrary.Get("ui_sfx_on"), SpriteLibrary.Get("ui_sfx_off"), audioOnCol, audioOffCol);
+
+            musicBtn = UIFactory.MakeButton(menu, "", UIFactory.Panel, () => { var s = SaveData.Current; s.musicOn = !s.musicOn; s.Save(); }, new Vector2(104, 104), 30);
+            musicBtn.gameObject.name = "Button_Music";
+            UIFactory.Place((RectTransform)musicBtn.transform, new Vector2(1, 1), new Vector2(-36, -108), new Vector2(104, 104));
+            musicIconImg = UIFactory.Image(musicBtn.transform, "MusicIcon", SpriteLibrary.Get("ui_music_on"), Color.white);
+            musicIconImg.preserveAspect = true;
+            UIFactory.Place((RectTransform)musicIconImg.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 8), new Vector2(54, 54));
+            musicToggle = UIIconToggle.Attach(musicBtn, musicIconImg, SpriteLibrary.Get("ui_music_on"), SpriteLibrary.Get("ui_music_off"), audioOnCol, audioOffCol);
 
             // Top-left energy card + Daily Rewards
             var eBox = UIFactory.PanelBox(menu, "EnergyBox", UIFactory.CardBg);
-            UIFactory.Place((RectTransform)eBox.transform, new Vector2(0, 1), new Vector2(36, -24), new Vector2(468, 178));
+            UIFactory.Place((RectTransform)eBox.transform, new Vector2(0, 1), new Vector2(36, -24), new Vector2(468, 200));
             var eIcon = UIFactory.Image(eBox.transform, "EnergyIcon", SpriteLibrary.Get("energy"), Color.white);
             eIcon.preserveAspect = true;
             UIFactory.Place((RectTransform)eIcon.transform, new Vector2(0, 1), new Vector2(18, -18), new Vector2(32, 42));
-            menuEnergyText = UIFactory.Label(eBox.transform, "ENERGY 5/5", 27, UIFactory.Accent, TextAnchor.MiddleLeft);
+            menuEnergyText = UIFactory.Label(eBox.transform, "ENERGY 5/5", 28, UIFactory.Accent, TextAnchor.MiddleLeft);
             UIFactory.Place((RectTransform)menuEnergyText.transform, new Vector2(0, 1), new Vector2(56, -20), new Vector2(180, 36));
-            menuEnergyTimerText = UIFactory.Label(eBox.transform, "FULL", 23, UIFactory.TextMuted, TextAnchor.MiddleRight);
+            menuEnergyTimerText = UIFactory.Label(eBox.transform, "FULL", 24, UIFactory.TextMuted, TextAnchor.MiddleRight);
             UIFactory.Place((RectTransform)menuEnergyTimerText.transform, new Vector2(1, 1), new Vector2(-18, -20), new Vector2(220, 36));
-            BuildEnergyPips(eBox.transform, menuEnergyPips, -72f, 424f);
-            menuEnergyAdBtn = UIFactory.MakeButton(eBox.transform, "+1 ENERGY (AD)", UIFactory.Amber, () => gm.WatchAdForEnergy(), new Vector2(430, 50), 26);
-            UIFactory.Place((RectTransform)menuEnergyAdBtn.transform, new Vector2(0.5f, 0), new Vector2(0, 14), new Vector2(430, 50));
+            BuildEnergyPips(eBox.transform, menuEnergyPips, -74f, 424f);
+            menuEnergyAdBtn = UIFactory.MakeButton(eBox.transform, "+1 ENERGY (AD)", UIFactory.Amber, () => gm.WatchAdForEnergy(), new Vector2(430, 68), 28);
+            UIFactory.Place((RectTransform)menuEnergyAdBtn.transform, new Vector2(0.5f, 0), new Vector2(0, 16), new Vector2(430, 68));
 
-            dailyRewardBtn = UIFactory.MakeButton(menu, "DAILY REWARDS", UIFactory.Good, ShowDailyRewards, new Vector2(468, 74), 30);
-            UIFactory.Place((RectTransform)dailyRewardBtn.transform, new Vector2(0, 1), new Vector2(36, -214), new Vector2(468, 74));
+            dailyRewardBtn = UIFactory.MakeButton(menu, "DAILY REWARDS", UIFactory.Good, ShowDailyRewards, new Vector2(468, 88), 34);
+            UIFactory.Place((RectTransform)dailyRewardBtn.transform, new Vector2(0, 1), new Vector2(36, -236), new Vector2(468, 88));
             dailyDoneCheck = UIFactory.Image(dailyRewardBtn.transform, "DoneCheck", SpriteLibrary.Get("ui_check"), Color.white);
             dailyDoneCheck.preserveAspect = true;
-            UIFactory.Place((RectTransform)dailyDoneCheck.transform, new Vector2(0.5f, 0.5f), new Vector2(126, 4), new Vector2(34, 34), new Vector2(0.5f, 0.5f));
+            UIFactory.Place((RectTransform)dailyDoneCheck.transform, new Vector2(0.5f, 0.5f), new Vector2(138, 8), new Vector2(36, 36), new Vector2(0.5f, 0.5f));
             dailyDoneCheck.gameObject.SetActive(false);
 
             var menuMotion = UIPanelMotion.Attach(menu, null, 0.16f);
@@ -701,6 +717,8 @@ namespace TurtleBlaster
             menuMotion.AddStagger((RectTransform)ranksBtn.transform);
             menuMotion.AddStagger((RectTransform)eBox.transform);
             menuMotion.AddStagger((RectTransform)dailyRewardBtn.transform);
+            menuMotion.AddStagger((RectTransform)sfxBtn.transform);
+            menuMotion.AddStagger((RectTransform)musicBtn.transform);
         }
 
         // =====================================================================
@@ -709,7 +727,7 @@ namespace TurtleBlaster
         void BuildGarage(Transform parent)
         {
             garage = UIFactory.Stretch("Garage", parent);
-            var bg = UIFactory.Image(garage, "Bg", SpriteLibrary.Get("square"), new Color(0.06f, 0.08f, 0.16f, 0.94f));
+            var bg = UIFactory.Image(garage, "Bg", SpriteLibrary.Get("square"), new Color(0.06f, 0.08f, 0.16f, 0.45f));
             var brt = (RectTransform)bg.transform; brt.anchorMin = Vector2.zero; brt.anchorMax = Vector2.one; brt.offsetMin = brt.offsetMax = Vector2.zero;
             bg.raycastTarget = true;
 
@@ -770,17 +788,17 @@ namespace TurtleBlaster
                 UIFactory.Place((RectTransform)cardBtn[idx].transform, new Vector2(1, 0), new Vector2(-26, 26), new Vector2(390, 90));
 
                 var costRt = UIFactory.Rect("CostRow", cardBtn[idx].transform);
-                UIFactory.Place(costRt, new Vector2(1, 0.5f), new Vector2(-20, 4), new Vector2(210, 40), new Vector2(1, 0.5f));
+                UIFactory.Place(costRt, new Vector2(1, 0.5f), new Vector2(-20, 8), new Vector2(210, 40), new Vector2(1, 0.5f));
                 var ccIcon = UIFactory.Image(costRt, "CoinIcon", SpriteLibrary.Get("coin"), Color.white);
                 ccIcon.preserveAspect = true;
                 UIFactory.Place((RectTransform)ccIcon.transform, new Vector2(0, 0.5f), new Vector2(0, 0), new Vector2(26, 26), new Vector2(0, 0.5f));
                 cardCoinCost[idx] = UIFactory.Label(costRt, "0", 28, UIFactory.Accent, TextAnchor.MiddleLeft);
-                UIFactory.Place((RectTransform)cardCoinCost[idx].transform, new Vector2(0, 0.5f), new Vector2(32, 0), new Vector2(76, 36), new Vector2(0, 0.5f));
+                UIFactory.Place((RectTransform)cardCoinCost[idx].transform, new Vector2(0, 0.5f), new Vector2(32, 2.5f), new Vector2(76, 36), new Vector2(0, 0.5f));
                 var pcIcon = UIFactory.Image(costRt, "PartIcon", SpriteLibrary.Get("part"), Color.white);
                 pcIcon.preserveAspect = true;
                 UIFactory.Place((RectTransform)pcIcon.transform, new Vector2(0, 0.5f), new Vector2(116, 0), new Vector2(26, 26), new Vector2(0, 0.5f));
                 cardPartCost[idx] = UIFactory.Label(costRt, "0", 28, new Color(0.60f, 0.85f, 1f), TextAnchor.MiddleLeft);
-                UIFactory.Place((RectTransform)cardPartCost[idx].transform, new Vector2(0, 0.5f), new Vector2(148, 0), new Vector2(56, 36), new Vector2(0, 0.5f));
+                UIFactory.Place((RectTransform)cardPartCost[idx].transform, new Vector2(0, 0.5f), new Vector2(148, 2.5f), new Vector2(56, 36), new Vector2(0, 0.5f));
                 cardCostRow[idx] = costRt.gameObject;
                 i++;
             }
@@ -867,8 +885,8 @@ namespace TurtleBlaster
                     if (lbl != null)
                     {
                         var lrt = (RectTransform)lbl.transform;
-                        lrt.offsetMin = new Vector2(12, 10);
-                        lrt.offsetMax = new Vector2(-12, -2);
+                        lrt.offsetMin = new Vector2(12, 21);
+                        lrt.offsetMax = new Vector2(-12, 0);
                         lbl.alignment = TextAnchor.MiddleCenter;
                         lbl.fontSize = UIFactory.ScaleFontSize(32);
                         lbl.text = "MAXED";
@@ -885,8 +903,8 @@ namespace TurtleBlaster
                     if (lbl != null)
                     {
                         var lrt = (RectTransform)lbl.transform;
-                        lrt.offsetMin = new Vector2(22, 10);
-                        lrt.offsetMax = new Vector2(-220, -2);
+                        lrt.offsetMin = new Vector2(22, 21);
+                        lrt.offsetMax = new Vector2(-220, 0);
                         lbl.alignment = TextAnchor.MiddleLeft;
                         lbl.fontSize = UIFactory.ScaleFontSize(30);
                         lbl.text = "UPGRADE";

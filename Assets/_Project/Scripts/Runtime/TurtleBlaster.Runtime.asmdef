@@ -3,6 +3,7 @@
   "rootNamespace": "TurtleBlaster",
   "references": [
     "UnityEngine.UI",
+    "Unity.InputSystem",
     "Unity.LevelPlay",
     "Unity.Services.Core",
     "Unity.Services.Authentication",
@@ -15,6 +16,12 @@
   "precompiledReferences": [],
   "autoReferenced": true,
   "defineConstraints": [],
-  "versionDefines": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.inputsystem",
+      "expression": "",
+      "define": "HAS_INPUT_SYSTEM"
+    }
+  ],
   "noEngineReferences": false
 }

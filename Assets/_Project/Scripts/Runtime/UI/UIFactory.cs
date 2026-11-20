@@ -2,6 +2,9 @@ using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
+#if ENABLE_INPUT_SYSTEM && HAS_INPUT_SYSTEM
+using UnityEngine.InputSystem.UI;
+#endif
 
 namespace TurtleBlaster
 {
@@ -258,7 +261,8 @@ namespace TurtleBlaster
             var t = Label(img.transform, label, fontSize, Color.white);
             var trt = (RectTransform)t.transform;
             trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one;
-            trt.offsetMin = new Vector2(12, 10); trt.offsetMax = new Vector2(-12, -2);
+            // ui_button has a 20px bottom lip + shadow vs 4px top border (face center +8), plus text drop-shadow compensation (+2.5)
+            trt.offsetMin = new Vector2(12, 21); trt.offsetMax = new Vector2(-12, 0);
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             img.gameObject.AddComponent<UIButtonFeel>();
             return btn;
@@ -267,12 +271,12 @@ namespace TurtleBlaster
         public static UnityEngine.UI.Image AddButtonIcon(UnityEngine.UI.Button btn, string spriteName, Vector2 iconSize, float leftPadding = 28f)
         {
             var ic = Image(btn.transform, "Icon", SpriteLibrary.Get(spriteName), Color.white);
-            Place((RectTransform)ic.transform, new Vector2(0, 0.5f), new Vector2(leftPadding, 3), iconSize, new Vector2(0, 0.5f));
+            Place((RectTransform)ic.transform, new Vector2(0, 0.5f), new Vector2(leftPadding, 8), iconSize, new Vector2(0, 0.5f));
             var txt = btn.GetComponentInChildren<Text>();
             if (txt != null)
             {
                 var trt = (RectTransform)txt.transform;
-                trt.offsetMin = new Vector2(leftPadding + iconSize.x * 0.7f, 10);
+                trt.offsetMin = new Vector2(leftPadding + iconSize.x * 0.7f, 21);
             }
             return ic;
         }
@@ -309,9 +313,27 @@ namespace TurtleBlaster
             var es = UnityEngine.Object.FindFirstObjectByType<EventSystem>();
             if (es == null)
             {
+#if ENABLE_INPUT_SYSTEM && HAS_INPUT_SYSTEM
+                var go = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+#elif ENABLE_LEGACY_INPUT_MANAGER
                 var go = new GameObject("EventSystem", typeof(EventSystem), typeof(StandaloneInputModule));
+#else
+                var go = new GameObject("EventSystem", typeof(EventSystem));
+#endif
                 es = go.GetComponent<EventSystem>();
             }
+#if ENABLE_INPUT_SYSTEM && HAS_INPUT_SYSTEM
+            else if (es.GetComponent<InputSystemUIInputModule>() == null)
+            {
+                var legacy = es.GetComponent<StandaloneInputModule>();
+                if (legacy != null)
+                {
+                    if (Application.isPlaying) UnityEngine.Object.Destroy(legacy);
+                    else UnityEngine.Object.DestroyImmediate(legacy);
+                }
+                es.gameObject.AddComponent<InputSystemUIInputModule>();
+            }
+#endif
             return es;
         }
 

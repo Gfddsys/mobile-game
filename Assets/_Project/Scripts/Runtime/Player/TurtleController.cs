@@ -168,8 +168,8 @@ namespace TurtleBlaster
             hurtBox.isTrigger = true;
             feetBox = gameObject.AddComponent<BoxCollider2D>();
             feetBox.isTrigger = true;
-            feetBox.size = new Vector2(1.5f, 0.4f);
-            feetBox.offset = new Vector2(0f, -0.12f);
+            feetBox.size = new Vector2(1.15f, 0.32f);
+            feetBox.offset = new Vector2(0f, -0.10f);
             ApplyDuck(false);
 
             // ---- visuals & skin perks ----
@@ -363,7 +363,8 @@ namespace TurtleBlaster
                 wasGrounded = true;                           // run the take-off reset below
                 squashStretch = new Vector2(0.80f, 1.24f);    // stretch vertically on jump
                 dust.Emit(6);
-                AudioManager.Sfx("flip", 0.5f, 1.6f);
+                if (GameManager.Instance == null || GameManager.Instance.State == GameState.Playing)
+                    AudioManager.Sfx("flip", 0.5f, 1.6f);
             }
 
             if (wasGrounded && !grounded)
@@ -391,23 +392,31 @@ namespace TurtleBlaster
             bool wantDuck = GameInput.Down;
             if (wantDuck != IsDucking) ApplyDuck(wantDuck);
 
-            // low-pass the measured ground slope: two wheels alternately touching made it chatter
+            // Measure the two-wheel terrain chord angle so both wheels sit flush on the ground together
+            float prevSlopeDeg = smoothSlopeDeg;
             if (touching)
             {
                 float measured = Mathf.Atan2(-groundNormal.x, groundNormal.y) * Mathf.Rad2Deg;
+                if (!onRail && GameManager.Instance != null && GameManager.Instance.World != null)
+                {
+                    float wx = rb.position.x;
+                    float hRear = GameManager.Instance.World.HeightAt(wx - 0.66f);
+                    float hFront = GameManager.Instance.World.HeightAt(wx + 0.66f);
+                    measured = Mathf.Atan2(hFront - hRear, 1.32f) * Mathf.Rad2Deg;
+                }
                 smoothSlopeDeg = Mathf.LerpAngle(smoothSlopeDeg, measured, 1f - Mathf.Exp(-dt * cfg.slopeFilterRate));
             }
+            float slopeRateDeg = touching ? Mathf.DeltaAngle(prevSlopeDeg, smoothSlopeDeg) / dt : 0f;
 
             // hand over smoothly between ground control and air control
-            levelWeight = Mathf.MoveTowards(levelWeight, grounded ? 1f : 0f, dt * (grounded ? 12f : 7f));
+            levelWeight = Mathf.MoveTowards(levelWeight, grounded ? 1f : 0f, dt * (grounded ? 16f : 7f));
             if (levelWeight > 0.001f)
             {
-                // On the ground the board self-levels to the slope; Pitch Up/Down only leans the nose
-                // (wheelie / nose-dive) up to a limit, so riding stays controllable on a touch screen.
-                float lean = sPitch > 0f ? sPitch * cfg.maxWheelieAngle : sPitch * cfg.maxNoseDownAngle;
-                float err = Mathf.DeltaAngle(rb.rotation, smoothSlopeDeg + lean);
+                // On the ground, keep both wheels planted flat on the slope (no one-wheel riding)
+                float err = Mathf.DeltaAngle(rb.rotation, smoothSlopeDeg);
                 err = Mathf.Sign(err) * Mathf.Max(0f, Mathf.Abs(err) - cfg.levelDeadZone);   // no twitching around the target
-                float tq = err * cfg.groundLevelStiffness - rb.angularVelocity * cfg.groundLevelDamping;
+                float relAngVel = rb.angularVelocity - slopeRateDeg;
+                float tq = err * cfg.groundLevelStiffness - relAngVel * cfg.groundLevelDamping;
                 rb.AddTorque(Mathf.Clamp(tq, -cfg.groundLevelMaxTorque, cfg.groundLevelMaxTorque) * levelWeight);
             }
             float airWeight = 1f - levelWeight;
@@ -425,7 +434,7 @@ namespace TurtleBlaster
                 {
                     float lean2 = sPitch > 0f ? sPitch * cfg.maxWheelieAngle : sPitch * cfg.maxNoseDownAngle;
                     float err2 = Mathf.DeltaAngle(rb.rotation, smoothSlopeDeg + lean2);
-                    float tq2 = err2 * cfg.groundLevelStiffness - rb.angularVelocity * cfg.groundLevelDamping;
+                    float tq2 = err2 * 0.8f - rb.angularVelocity * 12f;
                     rb.AddTorque(Mathf.Clamp(tq2, -cfg.groundLevelMaxTorque, cfg.groundLevelMaxTorque) * assist);
                 }
             }
@@ -475,7 +484,10 @@ namespace TurtleBlaster
                 float sr = smoothSlopeDeg * Mathf.Deg2Rad;
                 var tangent = new Vector2(Mathf.Cos(sr), Mathf.Sin(sr));
                 float along = Vector2.Dot(rb.linearVelocity, tangent);
-                float accel = cfg.driveAccel * traction * (SuperBoost ? 2f : 1f);
+                // Only apply full drive force when both wheels are level with the ground slope
+                float slopeErr = Mathf.Abs(Mathf.DeltaAngle(rb.rotation, smoothSlopeDeg));
+                float plantedFactor = Mathf.Clamp01(1f - (slopeErr - 4f) / 16f);
+                float accel = cfg.driveAccel * traction * (SuperBoost ? 2f : 1f) * plantedFactor;
                 if (along < target) rb.AddForce(tangent * (accel * rb.mass));
                 else rb.AddForce(-tangent * ((along - target) * 0.3f * rb.mass)); // bleed off excess speed slowly
             }
@@ -546,7 +558,7 @@ namespace TurtleBlaster
             UpdateTurboRings(dt);
             UpdateWheelSpin(dt);
             if (!Alive) return;
-            if (GameInput.JumpPressed) { jumpBuffer = cfg.jumpBufferTime; GameInput.TouchJump = false; GameInput.OverrideJump = false; }
+            if (GameInput.JumpPressed) { jumpBuffer = cfg.jumpBufferTime; GameInput.TouchJump = false; GameInput.OverrideJump = false; GameInput.AttractJump = false; }
 
             // keep active turtle skin synced when changed in Skins/Shop menu
             string currentSkinId = SaveData.Current.selectedSkin;
@@ -656,7 +668,7 @@ namespace TurtleBlaster
                 }
             }
 
-            AudioManager.Thrust(Thrusting);
+            AudioManager.Thrust(Thrusting && (GameManager.Instance == null || GameManager.Instance.State == GameState.Playing));
         }
 
         void UpdateWheelSpin(float dt)
@@ -886,8 +898,8 @@ namespace TurtleBlaster
         void ApplyDuck(bool duck)
         {
             IsDucking = duck;
-            if (duck) { hurtBox.size = new Vector2(0.9f, 0.35f); hurtBox.offset = new Vector2(0.05f, 0.42f); }
-            else { hurtBox.size = new Vector2(0.9f, 0.8f); hurtBox.offset = new Vector2(0.05f, 0.72f); }
+            if (duck) { hurtBox.size = new Vector2(0.80f, 0.30f); hurtBox.offset = new Vector2(0.05f, 0.35f); }
+            else { hurtBox.size = new Vector2(0.84f, 0.76f); hurtBox.offset = new Vector2(0.05f, 0.70f); }
         }
 
         // ================================================================
@@ -907,9 +919,10 @@ namespace TurtleBlaster
                 var mine = Is(cp.otherCollider, deck) || Is(cp.otherCollider, shell) || Is(cp.otherCollider, wheelFront) || Is(cp.otherCollider, wheelRear)
                     ? cp.otherCollider : cp.collider;
 
-                // Head / shell / deck smashing into the ground is always fatal (GDD 3.3)
+                // Head / shell / deck smashing into the ground is always fatal (GDD 3.3), unless protected by shield / hit invulnerability
                 if ((Is(mine, shell) || Is(mine, deck)) && col.relativeVelocity.magnitude > cfg.bodyCrashSpeed)
                 {
+                    if (shieldTimer > 0f || hitInvulnTimer > 0f) return;
                     Crash(Is(mine, shell) ? "Shell smashed into the ground" : "Board slammed flat");
                     return;
                 }
@@ -982,7 +995,7 @@ namespace TurtleBlaster
             else if (angle <= cfg.perfectAngle) grade = downhill ? LandingGrade.Perfect : LandingGrade.Clean;
             else grade = LandingGrade.Rough;
 
-            if (grade == LandingGrade.Fatal && shieldTimer > 0f) grade = LandingGrade.Rough;
+            if (grade == LandingGrade.Fatal && (shieldTimer > 0f || hitInvulnTimer > 0f)) grade = LandingGrade.Rough;
 
             if (grade == LandingGrade.Fatal)
             {
@@ -1030,17 +1043,22 @@ namespace TurtleBlaster
         void HitHazard(Hazard hz)
         {
             if (!Alive || hz == null) return;
-            if (shieldTimer > 0f) return;      // revive shield: nothing can hurt us
-
-            if (hz.heavy) { Crash("Crushed by a boulder"); return; }
-
-            if (hitInvulnTimer > 0f) return;   // just got hit: ignore light obstacles for a moment
-
             var col = hz.GetComponent<Collider2D>();
+
+            if (shieldTimer > 0f || hitInvulnTimer > 0f)
+            {
+                // Revive shield or post-hit invulnerability: ignore damage and clear physical boulders out of the way
+                if (hz.heavy)
+                {
+                    if (col != null) col.enabled = false;
+                    Destroy(hz.gameObject);
+                }
+                return;
+            }
 
             if (SuperBoost)
             {
-                // smash through small obstacles
+                // Smash through any obstacle (including boulders) during Super Boost
                 sparks.Emit(14);
                 HazardHandled?.Invoke(hz, true);
                 Destroy(hz.gameObject);
@@ -1049,8 +1067,10 @@ namespace TurtleBlaster
 
             if (freeHits > 0)
             {
+                // Shell Shield blocks any obstacle hit (including heavy boulders) in 1 shield charge
                 freeHits--;
                 if (col != null) col.enabled = false;
+                if (hz.heavy) Destroy(hz.gameObject);
                 QueueSpeedFactor(1f - cfg.lightHitSpeedLoss * hitLossMult);
                 hitFlash = 0.6f;
                 hitInvulnTimer = cfg.hitInvulnTime;
@@ -1059,7 +1079,7 @@ namespace TurtleBlaster
                 return;
             }
 
-            Crash("Hit a " + hz.DisplayName.ToLower());
+            Crash(hz.heavy ? "Crushed by a boulder" : ("Hit a " + hz.DisplayName.ToLower()));
         }
 
         /// <summary>Schedules a speed multiplier that is blended in over a few tenths of a second.</summary>
@@ -1162,6 +1182,209 @@ namespace TurtleBlaster
             ClearEffects();
             if (ragdoll != null) Destroy(ragdoll);
             Destroy(gameObject);
+        }
+    }
+
+    public struct GhostFrame
+    {
+        public float time;
+        public float x;
+        public float heightAboveGround;
+        public float rotOffsetDeg;
+        public bool ducking;
+        public bool thrusting;
+    }
+
+    public sealed class GhostRunData
+    {
+        public string skinId = SkinDatabase.DefaultId;
+        public int thrusterTier;
+        public float finalDistance;
+        public readonly List<GhostFrame> frames = new List<GhostFrame>(1024);
+
+        float lastRawRot;
+        float unwrappedRotOffset;
+        bool hasSample;
+
+        public void RecordSample(float time, TurtleController player, WorldGenerator world)
+        {
+            if (player == null || world == null) return;
+            Vector2 pos = player.Body.position;
+            float groundY = world.HeightAt(pos.x);
+            float slopeDeg = world.SlopeDegAt(pos.x);
+            float rawOffset = player.Body.rotation - slopeDeg;
+
+            if (!hasSample)
+            {
+                hasSample = true;
+                lastRawRot = rawOffset;
+                unwrappedRotOffset = Mathf.DeltaAngle(0f, rawOffset);
+            }
+            else
+            {
+                unwrappedRotOffset += Mathf.DeltaAngle(lastRawRot, rawOffset);
+                lastRawRot = rawOffset;
+            }
+
+            frames.Add(new GhostFrame
+            {
+                time = time,
+                x = pos.x,
+                heightAboveGround = Mathf.Max(0.32f, pos.y - groundY),
+                rotOffsetDeg = unwrappedRotOffset,
+                ducking = player.IsDucking,
+                thrusting = player.Thrusting || player.SuperBoost
+            });
+        }
+    }
+
+    /// <summary>
+    /// Visual-only replay ghost of the player's previous completed run.
+    /// Rides relative to the current terrain height &amp; slope so it works across any terrain seed.
+    /// </summary>
+    public class PreviousRunGhost : MonoBehaviour
+    {
+        public static GhostRunData LastCompletedRun { get; set; }
+
+        GhostRunData data;
+        WorldGenerator world;
+        SpriteRenderer boardSr, wheelRSr, wheelFSr, thrusterSr, flameSr, turtleSr;
+        Transform turtleT, wheelRT, wheelFT;
+        float wheelDeg;
+        float lastX;
+        float duckScaleY = 1f;
+        readonly Color baseGhostColor = new Color(0.56f, 0.94f, 1f, 0.44f);
+        readonly Color flameGhostColor = new Color(0.35f, 0.90f, 1f, 0.52f);
+
+        public static PreviousRunGhost Create(GhostRunData runData, WorldGenerator worldGen)
+        {
+            if (runData == null || runData.frames.Count < 2 || worldGen == null) return null;
+            var go = new GameObject("PreviousRunGhost");
+            var ghost = go.AddComponent<PreviousRunGhost>();
+            ghost.Build(runData, worldGen);
+            return ghost;
+        }
+
+        void Build(GhostRunData runData, WorldGenerator worldGen)
+        {
+            data = runData;
+            world = worldGen;
+
+            boardSr = MakePart("Board", SpriteLibrary.Get("board"), new Vector2(0f, 0.02f), 5, baseGhostColor);
+            wheelRSr = MakePart("WheelR", SpriteLibrary.Get("wheel"), new Vector2(-0.66f, -0.15f), 6, baseGhostColor);
+            wheelFSr = MakePart("WheelF", SpriteLibrary.Get("wheel"), new Vector2(0.66f, -0.15f), 6, baseGhostColor);
+            wheelRT = wheelRSr.transform;
+            wheelFT = wheelFSr.transform;
+
+            int tier = Mathf.Clamp(data.thrusterTier, 0, 2);
+            thrusterSr = MakePart("Thruster", SpriteLibrary.Get("thruster_" + tier), new Vector2(-1.18f, 0.30f), 4, baseGhostColor);
+            flameSr = MakePart("Flame", SpriteLibrary.Get("turbo_flame"), new Vector2(-1.14f, 0.30f), 3, flameGhostColor);
+            flameSr.enabled = false;
+
+            turtleSr = MakePart("Turtle", SpriteLibrary.GetTurtle(data.skinId), new Vector2(-0.02f, 0.56f), 7, baseGhostColor);
+            turtleT = turtleSr.transform;
+
+            UpdateAt(0f);
+        }
+
+        SpriteRenderer MakePart(string partName, Sprite sprite, Vector2 localPos, int order, Color col)
+        {
+            var go = new GameObject(partName);
+            go.transform.SetParent(transform, false);
+            go.transform.localPosition = localPos;
+            var sr = go.AddComponent<SpriteRenderer>();
+            sr.sprite = sprite;
+            sr.sortingOrder = order;
+            sr.color = col;
+            return sr;
+        }
+
+        public void UpdateAt(float elapsed)
+        {
+            if (data == null || world == null || data.frames.Count == 0) return;
+
+            var list = data.frames;
+            int count = list.Count;
+            var last = list[count - 1];
+
+            if (elapsed >= last.time)
+            {
+                // Reached the end of the previous run: park at the crash spot as a translucent ghost marker
+                float endX = last.x;
+                float gy = world.HeightAt(endX);
+                float sl = world.SlopeDegAt(endX);
+                transform.SetPositionAndRotation(new Vector3(endX, gy + 0.36f, 0f), Quaternion.Euler(0f, 0f, sl + 168f));
+                if (flameSr != null) flameSr.enabled = false;
+                float pulseAlpha = 0.24f + 0.12f * Mathf.Sin(Time.time * 4.5f);
+                SetAlpha(pulseAlpha);
+                return;
+            }
+
+            // Binary search for current frame interval
+            int lo = 0, hi = count - 1;
+            while (hi - lo > 1)
+            {
+                int mid = (lo + hi) >> 1;
+                if (list[mid].time <= elapsed) lo = mid;
+                else hi = mid;
+            }
+
+            var a = list[lo];
+            var b = list[hi];
+            float span = b.time - a.time;
+            float t = span > 0.0001f ? Mathf.Clamp01((elapsed - a.time) / span) : 0f;
+
+            float x = Mathf.Lerp(a.x, b.x, t);
+            float hOffset = Mathf.Lerp(a.heightAboveGround, b.heightAboveGround, t);
+            float rotOff = Mathf.Lerp(a.rotOffsetDeg, b.rotOffsetDeg, t);
+            bool duck = t < 0.5f ? a.ducking : b.ducking;
+            bool thrust = t < 0.5f ? a.thrusting : b.thrusting;
+
+            float groundY = world.HeightAt(x);
+            float slopeDeg = world.SlopeDegAt(x);
+            transform.SetPositionAndRotation(new Vector3(x, groundY + hOffset, 0f), Quaternion.Euler(0f, 0f, slopeDeg + rotOff));
+
+            // Spin wheels based on distance traveled
+            float dx = x - lastX;
+            lastX = x;
+            if (Mathf.Abs(dx) < 5f)
+            {
+                wheelDeg = Mathf.Repeat(wheelDeg - (dx / 0.38f) * Mathf.Rad2Deg, 360f);
+                if (wheelRT != null) wheelRT.localRotation = Quaternion.Euler(0f, 0f, wheelDeg);
+                if (wheelFT != null) wheelFT.localRotation = Quaternion.Euler(0f, 0f, wheelDeg + 47f);
+            }
+
+            // Duck pose
+            duckScaleY = Mathf.MoveTowards(duckScaleY, duck ? 0.6f : 1f, Time.deltaTime * 8f);
+            if (turtleT != null)
+            {
+                turtleT.localScale = new Vector3(duck ? 1.12f : 1f, duckScaleY, 1f);
+                turtleT.localPosition = new Vector3(-0.02f + (duck ? 0.04f : 0f), 0.18f + 0.38f * duckScaleY, 0f);
+                turtleT.localRotation = Quaternion.Euler(0f, 0f, duck ? -10f : (thrust ? -7.5f : 0f));
+            }
+
+            if (flameSr != null)
+            {
+                flameSr.enabled = thrust;
+                if (thrust)
+                {
+                    float flicker = 0.88f + 0.12f * Mathf.Sin(Time.time * 52f);
+                    flameSr.transform.localScale = new Vector3(flicker, 0.9f, 1f);
+                }
+            }
+
+            SetAlpha(baseGhostColor.a);
+        }
+
+        void SetAlpha(float a)
+        {
+            Color c = baseGhostColor;
+            c.a = a;
+            if (boardSr != null) boardSr.color = c;
+            if (wheelRSr != null) wheelRSr.color = c;
+            if (wheelFSr != null) wheelFSr.color = c;
+            if (thrusterSr != null) thrusterSr.color = c;
+            if (turtleSr != null) turtleSr.color = c;
         }
     }
 }

@@ -150,18 +150,36 @@ namespace TurtleBlaster
                 heights[i] = HeightAt(x0 + i * cfg.sampleSpacing);
                 if (heights[i] < minY) minY = heights[i];
             }
-            float bottom = minY - 8f;
+            float bottom = Mathf.Floor((minY - 8f) * 16f) / 16f;
 
-            // ---- mesh: biome-coloured top strip (vertices 0..3n) + dirt/rock block (second vertex set) ----
-            var verts = new Vector3[n * 3];
-            var cols = new Color32[n * 3];
-            var verts2 = new Vector3[n * 2];
-            var cols2 = new Color32[n * 2];
-            for (int i = 0; i < n; i++)
+            // ---- simple pixel-style visual mesh: 16-PPU stepped columns with clean flat turf & dirt bands ----
+            const float pixSize = 1f / 16f; // 16 pixels per world unit
+            const int turfPx = 7;           // uniform 7px (~0.44m) turf strip
+            int colsCount = Mathf.RoundToInt(w / pixSize);
+            int basePixX = Mathf.RoundToInt(x0 * 16f);
+
+            var allV = new Vector3[colsCount * 8];
+            var allUV = new Vector2[colsCount * 8];
+            var allC = new Color32[colsCount * 8];
+            var tris = new int[colsCount * 12];
+
+            const float texW = SpriteLibrary.TerrainTexWidth;
+            const float texH = SpriteLibrary.TerrainTexHeight;
+            const float vTurfTop = 1f;
+            const float vTurfBot = 152f / texH;
+            const float vDirtTopRow = 151.5f;
+
+            for (int c = 0; c < colsCount; c++)
             {
-                float lx = i * cfg.sampleSpacing;
-                float wx = x0 + lx;
-                float y = heights[i];
+                float lx0 = c * pixSize;
+                float lx1 = (c + 1) * pixSize;
+                float wx = x0 + lx0 + pixSize * 0.5f;
+                int worldPixX = basePixX + c;
+
+                float rawY = HeightAt(wx);
+                float yTop = Mathf.Round(rawY * 16f) / 16f;
+                float yMid = yTop - turfPx * pixSize;
+
                 Color biomeTint = Color.Lerp(Color.white, ParallaxBackground.EvaluateBiomeTint(wx, out _), 0.32f);
                 LevelBiomes.EvaluateGroundColors(wx, out var gA, out var gB, out var dTop, out var dBot);
                 Color32 grassA = (Color)gA * biomeTint;
@@ -169,52 +187,68 @@ namespace TurtleBlaster
                 Color32 dirtTop = (Color)dTop * biomeTint;
                 Color32 dirtBot = (Color)dBot * biomeTint;
 
-                verts[i * 3 + 0] = new Vector3(lx, y, 0);
-                verts[i * 3 + 1] = new Vector3(lx, y - 0.4f, 0);
-                verts[i * 3 + 2] = new Vector3(lx, bottom, 0);
-                bool alt = (((index * (n - 1)) + i) / 2) % 2 == 0;
-                cols[i * 3 + 0] = alt ? grassA : grassB;
-                cols[i * 3 + 1] = alt ? grassA : grassB;
-                cols[i * 3 + 2] = dirtBot;
+                bool alt = (((worldPixX >> 3) & 1) == 0); // simple 0.5m alternating turf stripes
+                Color32 turfCol = alt ? grassA : grassB;
 
-                // dirt top colour sits on the grass bottom vertices of a *second* set so the top band keeps a hard edge
-                verts2[i * 2 + 0] = verts[i * 3 + 1];
-                verts2[i * 2 + 1] = verts[i * 3 + 2];
-                cols2[i * 2 + 0] = dirtTop;
-                cols2[i * 2 + 1] = dirtBot;
-            }
+                float u0 = worldPixX / texW;
+                float u1 = (worldPixX + 1) / texW;
 
-            var allV = new Vector3[n * 5];
-            var allC = new Color32[n * 5];
-            System.Array.Copy(verts, 0, allV, 0, n * 3);
-            System.Array.Copy(cols, 0, allC, 0, n * 3);
-            System.Array.Copy(verts2, 0, allV, n * 3, n * 2);
-            System.Array.Copy(cols2, 0, allC, n * 3, n * 2);
+                // Top quad (clean turf strip with 1px dark top & bottom outline)
+                int vi = c * 8;
+                allV[vi + 0] = new Vector3(lx0, yTop, 0f);
+                allV[vi + 1] = new Vector3(lx1, yTop, 0f);
+                allV[vi + 2] = new Vector3(lx1, yMid, 0f);
+                allV[vi + 3] = new Vector3(lx0, yMid, 0f);
 
-            var tris = new List<int>((n - 1) * 12);
-            for (int i = 0; i < n - 1; i++)
-            {
-                // grass quad: top(i), top(i+1), mid(i+1), mid(i)
-                int t0 = i * 3, t1 = (i + 1) * 3;
-                tris.Add(t0); tris.Add(t1); tris.Add(t1 + 1);
-                tris.Add(t0); tris.Add(t1 + 1); tris.Add(t0 + 1);
-                // dirt quad using the second vertex set
-                int d0 = n * 3 + i * 2, d1 = n * 3 + (i + 1) * 2;
-                tris.Add(d0); tris.Add(d1); tris.Add(d1 + 1);
-                tris.Add(d0); tris.Add(d1 + 1); tris.Add(d0 + 1);
+                allUV[vi + 0] = new Vector2(u0, vTurfTop);
+                allUV[vi + 1] = new Vector2(u1, vTurfTop);
+                allUV[vi + 2] = new Vector2(u1, vTurfBot);
+                allUV[vi + 3] = new Vector2(u0, vTurfBot);
+
+                allC[vi + 0] = turfCol;
+                allC[vi + 1] = turfCol;
+                allC[vi + 2] = turfCol;
+                allC[vi + 3] = turfCol;
+
+                // Bottom quad (clean flat-shaded dirt block)
+                float dirtDepthPixels = (yMid - bottom) * 16f;
+                float vDirt0 = vDirtTopRow / texH;
+                float vDirt1 = (vDirtTopRow - dirtDepthPixels) / texH;
+
+                allV[vi + 4] = new Vector3(lx0, yMid, 0f);
+                allV[vi + 5] = new Vector3(lx1, yMid, 0f);
+                allV[vi + 6] = new Vector3(lx1, bottom, 0f);
+                allV[vi + 7] = new Vector3(lx0, bottom, 0f);
+
+                allUV[vi + 4] = new Vector2(u0, vDirt0);
+                allUV[vi + 5] = new Vector2(u1, vDirt0);
+                allUV[vi + 6] = new Vector2(u1, vDirt1);
+                allUV[vi + 7] = new Vector2(u0, vDirt1);
+
+                allC[vi + 4] = dirtTop;
+                allC[vi + 5] = dirtTop;
+                allC[vi + 6] = dirtBot;
+                allC[vi + 7] = dirtBot;
+
+                int ti = c * 12;
+                tris[ti + 0] = vi + 0; tris[ti + 1] = vi + 1; tris[ti + 2] = vi + 2;
+                tris[ti + 3] = vi + 0; tris[ti + 4] = vi + 2; tris[ti + 5] = vi + 3;
+                tris[ti + 6] = vi + 4; tris[ti + 7] = vi + 5; tris[ti + 8] = vi + 6;
+                tris[ti + 9] = vi + 4; tris[ti + 10] = vi + 6; tris[ti + 11] = vi + 7;
             }
 
             var mesh = new Mesh { name = "TerrainChunk" };
             mesh.vertices = allV;
+            mesh.uv = allUV;
             mesh.colors32 = allC;
             mesh.SetTriangles(tris, 0);
             mesh.RecalculateBounds();
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var mr = go.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = SpriteLibrary.SpriteMaterial;
+            mr.sharedMaterial = SpriteLibrary.TerrainMaterial;
             mr.sortingOrder = OrderTerrain;
 
-            // ---- collider: overlap one sample on each side so chunk seams are watertight ----
+            // ---- collider: exact same smooth EdgeCollider2D so riding physics stay identical ----
             var pts = new Vector2[n + 2];
             pts[0] = new Vector2(-cfg.sampleSpacing, HeightAt(x0 - cfg.sampleSpacing));
             for (int i = 0; i < n; i++) pts[i + 1] = new Vector2(i * cfg.sampleSpacing, heights[i]);
@@ -275,17 +309,17 @@ namespace TurtleBlaster
 
             while (cursor < x1 - 3f)
             {
-                if (cursor < 40f) { cursor = 40f; continue; } // safe start zone
+                if (cursor < 44f) { cursor = 44f; continue; } // safe start zone
                 float d = Difficulty(cursor);
                 float len = PlacePattern(rng, cursor, d);
-                float gap = Mathf.Lerp(12f, 5f, d) * (0.7f + (float)rng.NextDouble() * 0.6f);
+                float gap = Mathf.Lerp(16f, 9f, d) * (0.75f + (float)rng.NextDouble() * 0.55f);
                 cursor += len + gap;
             }
         }
 
         float PlacePattern(System.Random rng, float x, float d)
         {
-            float hazardChance = Mathf.Lerp(0.30f, 0.75f, d);
+            float hazardChance = Mathf.Lerp(0.24f, 0.56f, d);
             bool hazard = rng.NextDouble() < hazardChance;
             float slope = SlopeDegAt(x);
 
@@ -293,12 +327,12 @@ namespace TurtleBlaster
             {
                 // weighted pick among eligible hazards
                 var options = new List<(int id, int w)>();
-                bool flat = IsFlat(x, 5f, 10f);
+                bool flat = IsFlat(x, 5f, 9f);
                 if (flat) { options.Add((0, 4)); options.Add((1, 2)); }                       // cone, pothole
-                if (flat && d > 0.08f) options.Add((2, 2));                                    // low sign
-                if (IsFlat(x, 6f, 9f) && d > 0.18f) options.Add((3, 2));                       // cable
-                if (d > 0.12f) options.Add((4, 2));                                            // bird
-                if (d > 0.22f && slope > 8f && slope < 28f) options.Add((5, 1)); // boulder
+                if (flat && d > 0.10f) options.Add((2, 2));                                    // low sign
+                if (IsFlat(x, 6f, 7f) && d > 0.20f) options.Add((3, 2));                       // cable
+                if (d > 0.15f) options.Add((4, 2));                                            // bird
+                if (d > 0.28f && slope > 8f && slope < 20f) options.Add((5, 1));               // boulder
                 if (options.Count > 0)
                 {
                     int total = 0; foreach (var o in options) total += o.w;
@@ -323,27 +357,37 @@ namespace TurtleBlaster
         {
             switch (id)
             {
-                case 0: // cones
+                case 0: // cones (1 to 2 max so a single jump always clears them without needing fuel)
                 {
-                    int count = 1 + rng.Next(1 + Mathf.RoundToInt(Mathf.Lerp(1, 3, d)));
-                    for (int i = 0; i < count; i++) SpawnCone(x + i * 0.95f);
-                    return count * 0.95f + 1f;
+                    int count = (d > 0.35f && rng.NextDouble() < 0.45) ? 2 : 1;
+                    for (int i = 0; i < count; i++) SpawnCone(x + i * 0.78f);
+                    return count * 0.78f + 1.5f;
                 }
-                case 1: SpawnPothole(x + 1.2f); return 3f;
+                case 1: SpawnPothole(x + 1.2f); return 3.2f;
                 case 2: // low sign with a coin trail under it (rewards ducking)
                 {
                     SpawnSign(x + 2f);
                     for (int i = -1; i <= 1; i++) SpawnCoin(x + 2f + i * 1.0f, 0.55f);
-                    return 4f;
+                    return 4.5f;
                 }
-                case 3: SpawnCable(x + 3f); return 7f;
+                case 3:
+                {
+                    SpawnCable(x + 3f);
+                    for (int i = -1; i <= 1; i++) SpawnCoin(x + 3f + i * 1.2f, 0.55f);
+                    return 7f;
+                }
                 case 4:
                 {
                     float gy = HeightAt(x + 6f);
-                    SpawnBird(x + 6f, gy + 1.5f + (float)rng.NextDouble() * 0.7f);
-                    return 4f;
+                    SpawnBird(x + 6f, gy + 1.75f + (float)rng.NextDouble() * 0.45f);
+                    return 4.5f;
                 }
-                default: SpawnBoulder(x); return 4f;
+                default:
+                {
+                    SpawnBoulder(x);
+                    SpawnCoinArc(x - 2.5f, 5, 1.1f, 2.5f);
+                    return 5f;
+                }
             }
         }
 
@@ -370,35 +414,35 @@ namespace TurtleBlaster
         {
             string spr = LevelBiomes.Get(LevelBiomes.GetIndex(x)).coneSprite;
             var go = MakeSprite("Cone", spr, new Vector2(x, HeightAt(x) - 0.03f), 0f, OrderProps);
-            SetupTrigger(go, new Vector2(0.4f, 0.65f), new Vector2(0, 0.42f));
+            SetupTrigger(go, new Vector2(0.32f, 0.54f), new Vector2(0, 0.35f));
             var h = go.AddComponent<Hazard>(); h.type = HazardType.Cone;
         }
 
         void SpawnPothole(float x)
         {
             var go = MakeSprite("Pothole", "pothole", new Vector2(x, HeightAt(x) + 0.02f), SlopeDegAt(x), OrderProps);
-            SetupTrigger(go, new Vector2(1.7f, 0.25f), Vector2.zero);
+            SetupTrigger(go, new Vector2(1.25f, 0.20f), new Vector2(0f, -0.02f));
             var h = go.AddComponent<Hazard>(); h.type = HazardType.Pothole;
         }
 
         void SpawnSign(float x)
         {
-            var go = MakeSprite("LowSign", "sign", new Vector2(x, HeightAt(x) - 0.03f), 0f, OrderProps);
-            SetupTrigger(go, new Vector2(1.5f, 1.1f), new Vector2(0, 1.69f));
+            var go = MakeSprite("LowSign", "sign", new Vector2(x, HeightAt(x) - 0.03f), SlopeDegAt(x), OrderProps);
+            SetupTrigger(go, new Vector2(1.25f, 0.80f), new Vector2(0, 1.65f));
             var h = go.AddComponent<Hazard>(); h.type = HazardType.Sign; h.isAir = true;
         }
 
         void SpawnCable(float x)
         {
-            var go = MakeSprite("Cable", "cable", new Vector2(x, HeightAt(x) - 0.03f), 0f, OrderProps);
-            SetupTrigger(go, new Vector2(5.0f, 0.3f), new Vector2(0, 1.2f));
+            var go = MakeSprite("Cable", "cable", new Vector2(x, HeightAt(x) - 0.03f), SlopeDegAt(x), OrderProps);
+            SetupTrigger(go, new Vector2(4.2f, 0.24f), new Vector2(0, 1.45f));
             var h = go.AddComponent<Hazard>(); h.type = HazardType.Cable; h.isAir = true;
         }
 
         void SpawnBird(float x, float y)
         {
             var go = MakeSprite("Bird", "bird_0", new Vector2(x, y), 0f, OrderProps + 1);
-            var c = go.AddComponent<CircleCollider2D>(); c.isTrigger = true; c.radius = 0.3f;
+            var c = go.AddComponent<CircleCollider2D>(); c.isTrigger = true; c.radius = 0.24f;
             var h = go.AddComponent<Hazard>(); h.type = HazardType.Bird; h.isAir = true;
             go.AddComponent<BirdFlyer>();
         }
@@ -406,11 +450,11 @@ namespace TurtleBlaster
         void SpawnBoulder(float x)
         {
             string spr = LevelBiomes.Get(LevelBiomes.GetIndex(x)).boulderSprite;
-            var go = MakeSprite("Boulder", spr, new Vector2(x, HeightAt(x) + 0.9f), 0f, OrderProps + 1);
+            var go = MakeSprite("Boulder", spr, new Vector2(x, HeightAt(x) + 0.85f), 0f, OrderProps + 1);
             var rb = go.AddComponent<Rigidbody2D>();
             rb.mass = 6f; rb.gravityScale = cfg.gravityScale;
             rb.collisionDetectionMode = CollisionDetectionMode2D.Continuous;
-            var c = go.AddComponent<CircleCollider2D>(); c.radius = 0.8f; c.sharedMaterial = boulderMat;
+            var c = go.AddComponent<CircleCollider2D>(); c.radius = 0.64f; c.sharedMaterial = boulderMat;
             var h = go.AddComponent<Hazard>(); h.type = HazardType.Boulder; h.heavy = true;
             go.AddComponent<Boulder>();
         }

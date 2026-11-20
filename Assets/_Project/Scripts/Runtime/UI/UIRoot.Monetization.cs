@@ -11,7 +11,7 @@ namespace TurtleBlaster
     /// </summary>
     public partial class UIRoot
     {
-        RectTransform skinsScreen, shopScreen, ranksScreen, reviveOverlay, energyOverlay, dailyRewardOverlay, adOverlay, purchaseOverlay;
+        RectTransform skinsScreen, shopScreen, ranksScreen, reviveOverlay, energyOverlay, dailyRewardOverlay, adOverlay, purchaseOverlay, quitOverlay;
         UIFactory.WalletDisplay skinsWallet, shopWallet;
         Text shopNote, ranksRank, ranksName, ranksDist, ranksScore, ranksDate;
         Text reviveTimerText, energyOverlayTimerText, dailyStatusText, adTitle, adSub, adCountdown, purchaseText;
@@ -29,11 +29,12 @@ namespace TurtleBlaster
         float reviveDuration, reviveLeft, adLeft;
         int overlayClosedFrame = -1;
 
-        /// <summary>A modal dialog (ad / purchase / revive / energy / daily) is open, or was closed this frame.</summary>
+        /// <summary>A modal dialog (ad / purchase / revive / energy / daily / quit) is open, or was closed this frame.</summary>
         public bool OverlayOpen =>
             adOverlay.gameObject.activeSelf || purchaseOverlay.gameObject.activeSelf ||
             reviveOverlay.gameObject.activeSelf || energyOverlay.gameObject.activeSelf ||
             (dailyRewardOverlay != null && dailyRewardOverlay.gameObject.activeSelf) ||
+            (quitOverlay != null && quitOverlay.gameObject.activeSelf) ||
             overlayClosedFrame == Time.frameCount;
 
         void BuildExtras(Transform parent)
@@ -47,6 +48,7 @@ namespace TurtleBlaster
             BuildDailyRewardOverlay(parent);
             BuildAdOverlay(parent);
             BuildPurchaseOverlay(parent);
+            BuildQuitConfirmOverlay(parent);
         }
 
         void HideExtras()
@@ -56,6 +58,7 @@ namespace TurtleBlaster
             ranksScreen.gameObject.SetActive(false);
             if (energyOverlay != null) energyOverlay.gameObject.SetActive(false);
             if (dailyRewardOverlay != null) dailyRewardOverlay.gameObject.SetActive(false);
+            if (quitOverlay != null) quitOverlay.gameObject.SetActive(false);
         }
 
         static RectTransform FullScreen(Transform parent, string name, Color dim)
@@ -73,7 +76,7 @@ namespace TurtleBlaster
         // =====================================================================
         void BuildSkins(Transform parent)
         {
-            skinsScreen = FullScreen(parent, "Skins", new Color(0.06f, 0.08f, 0.16f, 0.96f));
+            skinsScreen = FullScreen(parent, "Skins", new Color(0.06f, 0.08f, 0.16f, 0.45f));
             UIFactory.HeaderBar(skinsScreen, "SKINS", () => gm.ShowMenu(), out skinsWallet);
 
             var skinsMotion = UIPanelMotion.Attach(skinsScreen, null, 0.16f);
@@ -235,7 +238,7 @@ namespace TurtleBlaster
         // =====================================================================
         void BuildShop(Transform parent)
         {
-            shopScreen = FullScreen(parent, "Shop", new Color(0.06f, 0.08f, 0.16f, 0.96f));
+            shopScreen = FullScreen(parent, "Shop", new Color(0.06f, 0.08f, 0.16f, 0.45f));
             UIFactory.HeaderBar(shopScreen, "SHOP", () => gm.ShowMenu(), out shopWallet);
 
             var shopMotion = UIPanelMotion.Attach(shopScreen, null, 0.16f);
@@ -377,7 +380,7 @@ namespace TurtleBlaster
         // =====================================================================
         void BuildRanks(Transform parent)
         {
-            ranksScreen = FullScreen(parent, "Leaderboard", new Color(0.06f, 0.08f, 0.16f, 0.96f));
+            ranksScreen = FullScreen(parent, "Leaderboard", new Color(0.06f, 0.08f, 0.16f, 0.45f));
             UIFactory.HeaderBar(ranksScreen, "LEADERBOARD", () => gm.ShowMenu(), out _, "TOP RUNNERS  -  BEST DISTANCE");
 
             var panel = UIFactory.PanelBox(ranksScreen, "Table", UIFactory.CardBg);
@@ -687,8 +690,8 @@ namespace TurtleBlaster
                 if (lbl != null)
                 {
                     var lrt = (RectTransform)lbl.transform;
-                    lrt.offsetMin = new Vector2(12, 10);
-                    lrt.offsetMax = canClaimToday ? new Vector2(-12, -2) : new Vector2(-44, -2);
+                    lrt.offsetMin = new Vector2(12, 21);
+                    lrt.offsetMax = canClaimToday ? new Vector2(-12, 0) : new Vector2(-44, 0);
                 }
                 if (canClaimToday)
                 {
@@ -873,6 +876,91 @@ namespace TurtleBlaster
             overlayClosedFrame = Time.frameCount;
             var cb = purchaseCallback; purchaseCallback = null;
             cb?.Invoke(confirmed);
+        }
+
+        // =====================================================================
+        // Exit Game confirmation & Back navigation (Swipe Back / Esc / Backspace)
+        // =====================================================================
+        void BuildQuitConfirmOverlay(Transform parent)
+        {
+            quitOverlay = FullScreen(parent, "QuitConfirm", new Color(0.03f, 0.04f, 0.10f, 0.78f));
+            var panel = UIFactory.PanelBox(quitOverlay, "Panel", UIFactory.CardBg);
+            UIFactory.Place((RectTransform)panel.transform, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(880, 440));
+            UIFactory.AddTopAccent(panel.transform, UIFactory.Bad, 7f, 22f);
+
+            var title = UIFactory.Label(panel.transform, "EXIT GAME?", 76, UIFactory.Accent);
+            UIFactory.Place((RectTransform)title.transform, new Vector2(0.5f, 1), new Vector2(0, -44), new Vector2(820, 92), new Vector2(0.5f, 1));
+
+            var sub = UIFactory.Label(panel.transform, "Are you sure you want to quit Turtle Blaster?", 32, UIFactory.TextMuted);
+            UIFactory.Place((RectTransform)sub.transform, new Vector2(0.5f, 1), new Vector2(0, -168), new Vector2(800, 56), new Vector2(0.5f, 1));
+
+            var exitBtn = UIFactory.MakeButton(panel.transform, "EXIT", UIFactory.Bad, () => gm.QuitApplication(), new Vector2(360, 102), 44);
+            UIFactory.Place((RectTransform)exitBtn.transform, new Vector2(0.5f, 0), new Vector2(-195, 42), new Vector2(360, 102));
+
+            var stayBtn = UIFactory.MakeButton(panel.transform, "STAY", UIFactory.Good, HideQuitConfirm, new Vector2(360, 102), 44);
+            UIFactory.Place((RectTransform)stayBtn.transform, new Vector2(0.5f, 0), new Vector2(195, 42), new Vector2(360, 102));
+
+            UIPanelMotion.Attach(quitOverlay, (RectTransform)panel.transform, 0.14f);
+            quitOverlay.gameObject.SetActive(false);
+        }
+
+        public void ShowQuitConfirm()
+        {
+            if (quitOverlay == null) return;
+            quitOverlay.SetAsLastSibling();
+            quitOverlay.gameObject.SetActive(true);
+        }
+
+        public void HideQuitConfirm()
+        {
+            if (quitOverlay == null || !quitOverlay.gameObject.activeSelf) return;
+            quitOverlay.gameObject.SetActive(false);
+            overlayClosedFrame = Time.frameCount;
+        }
+
+        /// <summary>
+        /// Handles Back / Escape for active modal overlays first.
+        /// Returns true if an overlay consumed the Back action.
+        /// </summary>
+        public bool TryHandleOverlayBack()
+        {
+            if (quitOverlay != null && quitOverlay.gameObject.activeSelf)
+            {
+                AudioManager.Sfx("click");
+                HideQuitConfirm();
+                return true;
+            }
+            if (purchaseOverlay != null && purchaseOverlay.gameObject.activeSelf)
+            {
+                AudioManager.Sfx("click");
+                ClosePurchase(false);
+                return true;
+            }
+            if (adOverlay != null && adOverlay.gameObject.activeSelf)
+            {
+                AudioManager.Sfx("click");
+                CloseAd(false);
+                return true;
+            }
+            if (dailyRewardOverlay != null && dailyRewardOverlay.gameObject.activeSelf)
+            {
+                AudioManager.Sfx("click");
+                HideDailyRewards();
+                return true;
+            }
+            if (energyOverlay != null && energyOverlay.gameObject.activeSelf)
+            {
+                AudioManager.Sfx("click");
+                HideOutOfEnergy();
+                return true;
+            }
+            if (reviveOverlay != null && reviveOverlay.gameObject.activeSelf)
+            {
+                AudioManager.Sfx("click");
+                ReviveChoose(false);
+                return true;
+            }
+            return false;
         }
 
         // =====================================================================
