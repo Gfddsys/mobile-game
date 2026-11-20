@@ -1,0 +1,32 @@
+{
+  "name": "TurtleBlaster.Screenshot",
+  "rootNamespace": "TurtleBlaster",
+  "references": [
+    "TurtleBlaster.Runtime",
+    "NativeGallery.Runtime",
+    "NativeShare.Runtime"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "NATIVE_GALLERY",
+    "NATIVE_SHARE"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.yasirkula.nativegallery",
+      "expression": "",
+      "define": "NATIVE_GALLERY"
+    },
+    {
+      "name": "com.yasirkula.nativeshare",
+      "expression": "",
+      "define": "NATIVE_SHARE"
+    }
+  ],
+  "noEngineReferences": false
+}

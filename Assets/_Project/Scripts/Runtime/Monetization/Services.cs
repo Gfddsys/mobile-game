@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 
 namespace TurtleBlaster
@@ -19,6 +20,11 @@ namespace TurtleBlaster
         public static IPurchaseService Purchases = new MockPurchaseService();
         public static ILeaderboardService Leaderboard = new UgsLeaderboardService("High_Scores");
         public static INotificationService Notifications = new FallbackNotificationService();
+        public static IScreenshotService Screenshot = new DefaultScreenshotService();
+
+        public static event Action PurchasesChanged;
+        public static bool LastPurchaseAlreadyGranted;
+        public static void NotifyPurchasesChanged() => PurchasesChanged?.Invoke();
 
         /// <summary>True where test/mock behaviour is allowed (Editor or Development Build).</summary>
         public static bool MockAllowed => Application.isEditor || Debug.isDebugBuild;
@@ -55,6 +61,8 @@ namespace TurtleBlaster
     public interface IPurchaseService
     {
         bool IsAvailable { get; }
+        string StoreStatus { get; }
+        void Initialize();
         /// <summary>Localised price text such as "$0.99" ("" if unknown).</summary>
         string GetPriceString(string productId);
         /// <summary>Start a purchase. onResult(true) only after the store confirmed payment.</summary>
@@ -69,6 +77,11 @@ namespace TurtleBlaster
         public static bool? AutoResult;
 
         public bool IsAvailable => AutoResult.HasValue || Services.MockAllowed;
+        public string StoreStatus => IsAvailable
+            ? "TEST STORE: purchases here are simulated - no real money is charged."
+            : "Store is not configured in this build.";
+
+        public void Initialize() { }
 
         public string GetPriceString(string productId)
         {
@@ -91,7 +104,7 @@ namespace TurtleBlaster
         }
     }
 
-    public enum ProductKind { Coins, Skin }
+    public enum ProductKind { Coins, Skin, Subscription }
 
     public class Product
     {
@@ -109,13 +122,15 @@ namespace TurtleBlaster
         public const string CoinsMedium = "coins_medium";
         public const string CoinsLarge = "coins_large";
         public const string SkinRainbow = "skin_rainbow";
+        public const string TurboVip = "turbo_vip";
 
         static readonly List<Product> list = new List<Product>
         {
-            new Product { id = CoinsSmall,  title = "Pocket Change",  kind = ProductKind.Coins, coins = 1000,  mockPrice = "$0.99" },
-            new Product { id = CoinsMedium, title = "Coin Bucket",    kind = ProductKind.Coins, coins = 5500,  mockPrice = "$4.99" },
-            new Product { id = CoinsLarge,  title = "Treasure Chest", kind = ProductKind.Coins, coins = 12000, mockPrice = "$9.99" },
-            new Product { id = SkinRainbow, title = "Rainbow Hero skin", kind = ProductKind.Skin, skinId = "rainbow", mockPrice = "$2.99" },
+            new Product { id = CoinsSmall,  title = "Pocket Change",     kind = ProductKind.Coins,        coins = 1000,  mockPrice = "$0.99" },
+            new Product { id = CoinsMedium, title = "Coin Bucket",       kind = ProductKind.Coins,        coins = 5500,  mockPrice = "$4.99" },
+            new Product { id = CoinsLarge,  title = "Treasure Chest",    kind = ProductKind.Coins,        coins = 12000, mockPrice = "$9.99" },
+            new Product { id = SkinRainbow, title = "Rainbow Hero skin", kind = ProductKind.Skin,         skinId = "rainbow", mockPrice = "$2.99" },
+            new Product { id = TurboVip,    title = "Turbo VIP Pass",    kind = ProductKind.Subscription, mockPrice = "$4.99/mo" },
         };
 
         public static IReadOnlyList<Product> All => list;
@@ -130,9 +145,11 @@ namespace TurtleBlaster
             var product = ProductCatalog.Get(productId);
             if (product == null || !Services.Purchases.IsAvailable) { done?.Invoke(false); return; }
             if (product.kind == ProductKind.Skin && SaveData.Current.OwnsSkin(product.skinId)) { done?.Invoke(false); return; }
+            if (product.kind == ProductKind.Subscription && SaveData.VipActiveThisSession) { done?.Invoke(false); return; }
+            Services.LastPurchaseAlreadyGranted = false;
             Services.Purchases.Purchase(productId, ok =>
             {
-                if (ok) Grant(product);
+                if (ok && !Services.LastPurchaseAlreadyGranted) Grant(product);
                 done?.Invoke(ok);
             });
         }
@@ -141,7 +158,13 @@ namespace TurtleBlaster
         {
             var save = SaveData.Current;
             if (product.kind == ProductKind.Coins) save.coins += product.coins;
-            else save.GrantSkin(product.skinId);
+            else if (product.kind == ProductKind.Skin) save.GrantSkin(product.skinId);
+            else if (product.kind == ProductKind.Subscription)
+            {
+                SaveData.VipActiveThisSession = true;
+                save.energy = SaveData.MaxEnergy;
+                save.energyNextRefillUtcTicks = 0;
+            }
             save.Save();
         }
     }
@@ -247,6 +270,109 @@ namespace TurtleBlaster
             IsScheduled = false;
             ScheduledFireTimeUtc = default;
             Debug.Log("[Notifications] Cancelled energy full notification.");
+        }
+    }
+
+    // ------------------------------------------------------------------ screenshots
+
+    public struct ScreenshotResult
+    {
+        public bool success;
+        public string filePath;      // PC path (Editor/Standalone) or temp cache file path (Mobile) used for NativeShare
+        public string galleryPath;   // Mobile Gallery path (empty on PC)
+        public string statusMessage; // Human-readable message for UI
+    }
+
+    public interface IScreenshotService
+    {
+        string LastSavedPath { get; }
+        string LastStatusMessage { get; }
+        void SaveScreenshot(byte[] pngBytes, string fileName, Action<ScreenshotResult> onComplete);
+        void ShareScreenshot(string filePath, string subject, string text, Action<bool> onComplete = null);
+        void OpenFolder(string filePath);
+    }
+
+    /// <summary>
+    /// Fallback screenshot handler used in tests or when NativeGallery/NativeShare packages are absent.
+    /// Saves PNGs to PC project Screenshots folder (in Editor) or persistentDataPath.
+    /// </summary>
+    public class DefaultScreenshotService : IScreenshotService
+    {
+        public string LastSavedPath { get; private set; }
+        public string LastStatusMessage { get; private set; }
+
+        public void SaveScreenshot(byte[] pngBytes, string fileName, Action<ScreenshotResult> onComplete)
+        {
+            if (pngBytes == null || pngBytes.Length == 0 || string.IsNullOrEmpty(fileName))
+            {
+                LastStatusMessage = "Screenshot failed: empty image data.";
+                onComplete?.Invoke(new ScreenshotResult { success = false, statusMessage = LastStatusMessage });
+                return;
+            }
+
+            try
+            {
+#if UNITY_EDITOR
+                string folder = Path.Combine(Directory.GetCurrentDirectory(), "Screenshots");
+                Directory.CreateDirectory(folder);
+                string fullPath = Path.Combine(folder, fileName);
+                File.WriteAllBytes(fullPath, pngBytes);
+                LastSavedPath = fullPath;
+                LastStatusMessage = "Saved to PC: Screenshots/" + fileName;
+                Debug.Log("[Screenshot] Saved to PC: " + fullPath);
+#else
+                string folder = Path.Combine(Application.persistentDataPath, "Screenshots");
+                Directory.CreateDirectory(folder);
+                string fullPath = Path.Combine(folder, fileName);
+                File.WriteAllBytes(fullPath, pngBytes);
+                LastSavedPath = fullPath;
+                LastStatusMessage = "Saved locally: " + fullPath;
+                Debug.Log("[Screenshot] Saved locally: " + fullPath);
+#endif
+                onComplete?.Invoke(new ScreenshotResult
+                {
+                    success = true,
+                    filePath = LastSavedPath,
+                    galleryPath = string.Empty,
+                    statusMessage = LastStatusMessage
+                });
+            }
+            catch (Exception e)
+            {
+                LastStatusMessage = "Save failed: " + e.Message;
+                Debug.LogWarning("[Screenshot] " + LastStatusMessage);
+                onComplete?.Invoke(new ScreenshotResult { success = false, statusMessage = LastStatusMessage });
+            }
+        }
+
+        public void ShareScreenshot(string filePath, string subject, string text, Action<bool> onComplete = null)
+        {
+            Debug.Log("[Screenshot] Native Share requires Android/iOS mobile build. File: " + filePath);
+            onComplete?.Invoke(false);
+        }
+
+        public void OpenFolder(string filePath) => OpenPathInFileBrowser(filePath);
+
+        public static void OpenPathInFileBrowser(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath)) return;
+            string folder = Directory.Exists(filePath) ? filePath : Path.GetDirectoryName(filePath);
+#if UNITY_EDITOR_WIN || UNITY_STANDALONE_WIN
+            try
+            {
+                if (File.Exists(filePath))
+                    System.Diagnostics.Process.Start("explorer.exe", "/select,\"" + filePath.Replace('/', '\\') + "\"");
+                else if (!string.IsNullOrEmpty(folder) && Directory.Exists(folder))
+                    System.Diagnostics.Process.Start("explorer.exe", "\"" + folder.Replace('/', '\\') + "\"");
+                return;
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning("[Screenshot] Explorer open failed: " + e.Message);
+            }
+#endif
+            if (!string.IsNullOrEmpty(folder))
+                Application.OpenURL("file://" + folder.Replace('\\', '/'));
         }
     }
 }

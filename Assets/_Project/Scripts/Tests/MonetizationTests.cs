@@ -1,4 +1,5 @@
 using System.Collections;
+using System.IO;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
@@ -9,8 +10,10 @@ namespace TurtleBlaster.Tests
     public class MonetizationTests
     {
         IAdService prevAds;
+        IPurchaseService prevPurchases;
         ILeaderboardService prevLeaderboard;
         INotificationService prevNotifications;
+        IScreenshotService prevScreenshot;
 
         [SetUp]
         public void SetUp()
@@ -20,11 +23,15 @@ namespace TurtleBlaster.Tests
             SaveData.ResetAll();
             GameInput.ClearOverride(); GameInput.ClearTouch();
             prevAds = Services.Ads;
+            prevPurchases = Services.Purchases;
             prevLeaderboard = Services.Leaderboard;
             prevNotifications = Services.Notifications;
+            prevScreenshot = Services.Screenshot;
             Services.Ads = new MockAdService();
+            Services.Purchases = new MockPurchaseService();
             Services.Leaderboard = new LocalLeaderboard();
             Services.Notifications = new FallbackNotificationService();
+            Services.Screenshot = new DefaultScreenshotService();
             MockAdService.AutoResult = true;
             MockPurchaseService.AutoResult = true;
         }
@@ -38,8 +45,10 @@ namespace TurtleBlaster.Tests
             GameInput.ClearOverride();
             foreach (var gm in Object.FindObjectsByType<GameManager>(FindObjectsSortMode.None)) Object.DestroyImmediate(gm.gameObject);
             Services.Ads = prevAds;
+            Services.Purchases = prevPurchases;
             Services.Leaderboard = prevLeaderboard;
             Services.Notifications = prevNotifications;
+            Services.Screenshot = prevScreenshot;
         }
 
         // ---------------- skins ----------------
@@ -98,6 +107,52 @@ namespace TurtleBlaster.Tests
             Assert.AreEqual(1000, SaveData.Current.coins);
             Store.Buy(ProductCatalog.CoinsMedium, null);
             Assert.AreEqual(6500, SaveData.Current.coins);
+        }
+
+        [Test]
+        public void Store_TurboVipSubscriptionActivatesVipAndRefillsEnergy()
+        {
+            Assert.IsTrue(SaveData.Current.TryConsumeEnergy(2));
+            Assert.AreEqual(3, SaveData.Current.energy);
+
+            bool result = false;
+            Store.Buy(ProductCatalog.TurboVip, ok => result = ok);
+            Assert.IsTrue(result);
+            Assert.IsTrue(SaveData.VipActiveThisSession);
+            Assert.AreEqual(SaveData.MaxEnergy, SaveData.Current.energy);
+
+            result = true;
+            Store.Buy(ProductCatalog.TurboVip, ok => result = ok);
+            Assert.IsFalse(result, "active VIP subscription cannot be purchased twice in the same session");
+        }
+
+        [Test]
+        public void Screenshot_DefaultServiceSavesPngToPcFolder()
+        {
+            var tex = new Texture2D(4, 4, TextureFormat.RGB24, false);
+            byte[] pngBytes = tex.EncodeToPNG();
+            Object.DestroyImmediate(tex);
+
+            ScreenshotResult result = default;
+            try
+            {
+                new DefaultScreenshotService().SaveScreenshot(pngBytes, "unit_test_shot.png", r => result = r);
+                Assert.IsTrue(result.success);
+                Assert.IsFalse(string.IsNullOrEmpty(result.filePath));
+                Assert.IsTrue(File.Exists(result.filePath));
+
+                byte[] saved = File.ReadAllBytes(result.filePath);
+                Assert.GreaterOrEqual(saved.Length, 8);
+                Assert.AreEqual(0x89, saved[0]);
+                Assert.AreEqual(0x50, saved[1]);
+                Assert.AreEqual(0x4E, saved[2]);
+                Assert.AreEqual(0x47, saved[3]);
+            }
+            finally
+            {
+                if (!string.IsNullOrEmpty(result.filePath) && File.Exists(result.filePath))
+                    File.Delete(result.filePath);
+            }
         }
 
         // ---------------- leaderboard ----------------

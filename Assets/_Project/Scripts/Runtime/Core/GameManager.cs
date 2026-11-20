@@ -38,6 +38,10 @@ namespace TurtleBlaster
         float energyCheckTimer;
         int currentBiome = -1;
         Texture2D snapshot;
+        bool capturingScreenshot;
+        Texture2D lastScreenshotTex;
+        float savedTimeScaleBeforeShot = 1f;
+        bool pausedForShot;
         Coroutine dyingRoutine;
         readonly System.Collections.Generic.List<GameObject> owned = new System.Collections.Generic.List<GameObject>();
 
@@ -99,6 +103,7 @@ namespace TurtleBlaster
         void Start()
         {
             ShowMenu();
+            Services.Purchases.Initialize();
             (Services.Leaderboard as UgsLeaderboardService)?.EnsureSignedInAsync();
         }
 
@@ -107,6 +112,7 @@ namespace TurtleBlaster
             if (Instance != this) return;
             Instance = null;
             Time.timeScale = 1f;
+            if (lastScreenshotTex != null) { Destroy(lastScreenshotTex); lastScreenshotTex = null; }
             if (Player != null) Player.Dispose();
             foreach (var go in owned)
             {
@@ -146,6 +152,9 @@ namespace TurtleBlaster
 
         void Update()
         {
+#if UNITY_EDITOR || UNITY_STANDALONE
+            if (Input.GetKeyDown(KeyCode.F12)) CaptureAndShowScreenshot();
+#endif
             energyCheckTimer += Time.unscaledDeltaTime;
             if (energyCheckTimer >= 0.5f)
             {
@@ -671,12 +680,106 @@ namespace TurtleBlaster
             catch (System.Exception) { /* not critical */ }
         }
 
+        public void CaptureAndShowScreenshot(bool shareImmediately = false)
+        {
+            if (capturingScreenshot) return;
+            StartCoroutine(CaptureUserScreenshotRoutine(shareImmediately));
+        }
+
+        IEnumerator CaptureUserScreenshotRoutine(bool shareImmediately)
+        {
+            capturingScreenshot = true;
+            if (State == GameState.Playing)
+            {
+                savedTimeScaleBeforeShot = Time.timeScale;
+                Time.timeScale = 0f;
+                pausedForShot = true;
+            }
+
+            yield return new WaitForEndOfFrame();
+
+            byte[] bytes = null;
+            try
+            {
+                int width = Screen.width;
+                int height = Screen.height;
+                if (width > 0 && height > 0)
+                {
+                    var tex = new Texture2D(width, height, TextureFormat.RGB24, false);
+                    tex.ReadPixels(new Rect(0, 0, width, height), 0, 0);
+                    tex.Apply();
+                    bytes = tex.EncodeToPNG();
+
+                    if (lastScreenshotTex != null) Destroy(lastScreenshotTex);
+                    lastScreenshotTex = tex;
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("User screenshot failed: " + e.Message);
+            }
+
+            if (bytes == null || bytes.Length == 0)
+            {
+                capturingScreenshot = false;
+                OnScreenshotOverlayClosed();
+                yield break;
+            }
+
+            string fileName = "TurtleBlaster_" + System.DateTime.Now.ToString("yyyyMMdd_HHmmss") + ".png";
+            Services.Screenshot.SaveScreenshot(bytes, fileName, res =>
+            {
+                capturingScreenshot = false;
+                if (this == null || UI == null) return;
+                AudioManager.Sfx("perfect");
+                UI.ShowScreenshotPreview(lastScreenshotTex, res);
+                if (shareImmediately && !string.IsNullOrEmpty(res.filePath))
+                {
+                    Services.Screenshot.ShareScreenshot(
+                        res.filePath,
+                        "Turtle Blaster",
+                        "Check out my Turtle Blaster screenshot!");
+                }
+            });
+        }
+
+        public void ShareLastOrCaptureScreenshot()
+        {
+            if (!string.IsNullOrEmpty(Services.Screenshot.LastSavedPath) && File.Exists(Services.Screenshot.LastSavedPath))
+            {
+                Services.Screenshot.ShareScreenshot(
+                    Services.Screenshot.LastSavedPath,
+                    "Turtle Blaster",
+                    "Check out my Turtle Blaster screenshot!",
+                    ok =>
+                    {
+                        if (this != null && UI != null && Application.isEditor)
+                            UI.Popup("NATIVE SHARE WORKS ON MOBILE!", UIFactory.Accent, 48);
+                    });
+            }
+            else
+            {
+                CaptureAndShowScreenshot(shareImmediately: true);
+            }
+        }
+
+        public void OnScreenshotOverlayClosed()
+        {
+            if (pausedForShot)
+            {
+                pausedForShot = false;
+                if (State == GameState.Playing) Time.timeScale = savedTimeScaleBeforeShot;
+            }
+        }
+
         void FinishRun()
         {
             var save = SaveData.Current;
             var sk = SkinDatabase.Get(save.selectedSkin);
             if (sk != null && sk.coinBonusMult > 1.01f)
                 Stats.coins = Mathf.RoundToInt(Stats.coins * sk.coinBonusMult);
+            if (SaveData.VipActiveThisSession)
+                Stats.coins = Mathf.RoundToInt(Stats.coins * 1.25f);
 
             Stats.newBestDistance = Mathf.FloorToInt(Stats.distance) > save.bestDistance;
             Stats.newBestScore = Stats.score > save.bestScore;

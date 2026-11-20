@@ -1,0 +1,26 @@
+{
+  "name": "TurtleBlaster.IAP",
+  "rootNamespace": "TurtleBlaster",
+  "references": [
+    "TurtleBlaster.Runtime",
+    "Unity.Purchasing",
+    "Unity.Purchasing.Stores"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": false,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [
+    "UNITY_PURCHASING"
+  ],
+  "versionDefines": [
+    {
+      "name": "com.unity.purchasing",
+      "expression": "5.5.0",
+      "define": "UNITY_PURCHASING"
+    }
+  ],
+  "noEngineReferences": false
+}

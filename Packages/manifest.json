@@ -1,10 +1,13 @@
 {
   "dependencies": {
     "com.unity.mobile.notifications": "2.5.0",
+    "com.unity.purchasing": "5.5.0",
     "com.unity.services.leaderboards": "2.3.4",
     "com.unity.services.levelplay": "9.6.0",
-    "com.unity.test-framework": "1.6.0",
-    "com.unity.ugui": "2.0.0",
+    "com.unity.test-framework": "1.7.0",
+    "com.unity.ugui": "2.5.0",
+    "com.yasirkula.nativegallery": "https://github.com/yasirkula/UnityNativeGallery.git",
+    "com.yasirkula.nativeshare": "https://github.com/yasirkula/UnityNativeShare.git",
     "com.unity.modules.androidjni": "1.0.0",
     "com.unity.modules.audio": "1.0.0",
     "com.unity.modules.imageconversion": "1.0.0",
@@ -12,8 +15,10 @@
     "com.unity.modules.jsonserialize": "1.0.0",
     "com.unity.modules.particlesystem": "1.0.0",
     "com.unity.modules.physics2d": "1.0.0",
+    "com.unity.modules.physicscore2d": "1.0.0",
     "com.unity.modules.screencapture": "1.0.0",
     "com.unity.modules.ui": "1.0.0",
-    "com.unity.modules.uielements": "1.0.0"
+    "com.unity.modules.uielements": "1.0.0",
+    "com.unity.modules.unitywebrequesttexture": "1.0.0"
   }
 }

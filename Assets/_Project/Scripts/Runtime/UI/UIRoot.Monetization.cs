@@ -13,6 +13,7 @@ namespace TurtleBlaster
     {
         RectTransform skinsScreen, shopScreen, ranksScreen, reviveOverlay, energyOverlay, dailyRewardOverlay, adOverlay, purchaseOverlay;
         UIFactory.WalletDisplay skinsWallet, shopWallet;
+        GameObject shopVipBadge;
         Text shopNote, ranksRank, ranksName, ranksDist, ranksScore, ranksDate;
         Text reviveTimerText, energyOverlayTimerText, dailyStatusText, adTitle, adSub, adCountdown, purchaseText;
         Image reviveBar;
@@ -29,11 +30,12 @@ namespace TurtleBlaster
         float reviveDuration, reviveLeft, adLeft;
         int overlayClosedFrame = -1;
 
-        /// <summary>A modal dialog (ad / purchase / revive / energy / daily) is open, or was closed this frame.</summary>
+        /// <summary>A modal dialog (ad / purchase / revive / energy / daily / screenshot) is open, or was closed this frame.</summary>
         public bool OverlayOpen =>
             adOverlay.gameObject.activeSelf || purchaseOverlay.gameObject.activeSelf ||
             reviveOverlay.gameObject.activeSelf || energyOverlay.gameObject.activeSelf ||
             (dailyRewardOverlay != null && dailyRewardOverlay.gameObject.activeSelf) ||
+            (screenshotOverlay != null && screenshotOverlay.gameObject.activeSelf) ||
             overlayClosedFrame == Time.frameCount;
 
         void BuildExtras(Transform parent)
@@ -47,6 +49,15 @@ namespace TurtleBlaster
             BuildDailyRewardOverlay(parent);
             BuildAdOverlay(parent);
             BuildPurchaseOverlay(parent);
+            BuildScreenshotOverlay(parent);
+            Services.PurchasesChanged += OnPurchasesChanged;
+        }
+
+        void OnPurchasesChanged()
+        {
+            if (this == null) return;
+            if (shopScreen != null && shopScreen.gameObject.activeSelf) RefreshShop();
+            if (skinsScreen != null && skinsScreen.gameObject.activeSelf) RefreshSkins();
         }
 
         void HideExtras()
@@ -231,55 +242,84 @@ namespace TurtleBlaster
         }
 
         // =====================================================================
-        // Shop (real-money coin packs + premium skin)
+        // Shop (real-money coin packs + premium skin + VIP subscription)
         // =====================================================================
         void BuildShop(Transform parent)
         {
             shopScreen = FullScreen(parent, "Shop", new Color(0.06f, 0.08f, 0.16f, 0.96f));
-            UIFactory.HeaderBar(shopScreen, "SHOP", () => gm.ShowMenu(), out shopWallet);
+            var headerRt = UIFactory.HeaderBar(shopScreen, "SHOP", () => gm.ShowMenu(), out shopWallet);
+
+            var vipPill = UIFactory.GlassPill(headerRt, "ShopVipBadge", UIFactory.Amber);
+            UIFactory.Place((RectTransform)vipPill.transform, new Vector2(0.5f, 0.5f), new Vector2(-40, 0), new Vector2(280, 52), new Vector2(0.5f, 0.5f));
+            var vipLbl = UIFactory.Label(vipPill.transform, "VIP PASS ACTIVE", 24, Color.white);
+            var vrt = (RectTransform)vipLbl.transform; vrt.anchorMin = Vector2.zero; vrt.anchorMax = Vector2.one; vrt.offsetMin = vrt.offsetMax = Vector2.zero;
+            shopVipBadge = vipPill.gameObject;
+            shopVipBadge.SetActive(false);
 
             var shopMotion = UIPanelMotion.Attach(shopScreen, null, 0.16f);
             var products = ProductCatalog.All;
-            for (int i = 0; i < products.Count; i++)
+            int count = products.Count;
+            float cardW = count >= 5 ? 344f : 410f;
+            float gap = count >= 5 ? 24f : 40f;
+            float step = cardW + gap;
+            float startX = -(count - 1) * step * 0.5f;
+            float titleW = cardW - 24f;
+            float pillW = cardW - 36f;
+            float btnW = cardW - 44f;
+
+            for (int i = 0; i < count; i++)
             {
                 var p = products[i];
-                float x = -675 + i * 450;
+                float x = startX + i * step;
                 bool isSkin = p.kind == ProductKind.Skin;
-                var card = UIFactory.PanelBox(shopScreen, "Product_" + p.id, isSkin ? new Color(0.24f, 0.16f, 0.38f) : UIFactory.CardBg);
+                bool isSub = p.kind == ProductKind.Subscription;
+                Color bgColor = isSub ? new Color(0.14f, 0.24f, 0.38f) : isSkin ? new Color(0.24f, 0.16f, 0.38f) : UIFactory.CardBg;
+                Color accentColor = isSub ? UIFactory.Blue : isSkin ? UIFactory.Purple : UIFactory.Amber;
+
+                var card = UIFactory.PanelBox(shopScreen, "Product_" + p.id, bgColor);
                 var cardRt = (RectTransform)card.transform;
-                UIFactory.Place(cardRt, new Vector2(0.5f, 0.5f), new Vector2(x, 22), new Vector2(410, 470));
-                UIFactory.AddTopAccent(card.transform, isSkin ? UIFactory.Purple : UIFactory.Amber, 7f, 18f);
+                UIFactory.Place(cardRt, new Vector2(0.5f, 0.5f), new Vector2(x, 22), new Vector2(cardW, 480));
+                UIFactory.AddTopAccent(card.transform, accentColor, 7f, 18f);
                 shopMotion.AddStagger(cardRt);
                 productCards.Add(cardRt);
 
-                var spot = UIFactory.Image(card.transform, "Spotlight", SpriteLibrary.Get("ui_glow"),
-                    isSkin ? new Color(0.72f, 0.42f, 1f, 0.34f) : new Color(1f, 0.78f, 0.25f, 0.28f));
-                UIFactory.Place((RectTransform)spot.transform, new Vector2(0.5f, 1), new Vector2(0, -52), new Vector2(156, 156), new Vector2(0.5f, 1));
+                Color spotColor = isSub
+                    ? new Color(0.32f, 0.72f, 1f, 0.34f)
+                    : isSkin ? new Color(0.72f, 0.42f, 1f, 0.34f) : new Color(1f, 0.78f, 0.25f, 0.28f);
+                var spot = UIFactory.Image(card.transform, "Spotlight", SpriteLibrary.Get("ui_glow"), spotColor);
+                UIFactory.Place((RectTransform)spot.transform, new Vector2(0.5f, 1), new Vector2(0, -52), new Vector2(148, 148), new Vector2(0.5f, 1));
 
-                var icon = UIFactory.Image(card.transform, "Icon", isSkin ? SpriteLibrary.GetTurtle(p.skinId) : SpriteLibrary.Get("coin"), Color.white);
+                Sprite iconSprite = isSub ? SpriteLibrary.Get("star") : isSkin ? SpriteLibrary.GetTurtle(p.skinId) : SpriteLibrary.Get("coin");
+                var icon = UIFactory.Image(card.transform, "Icon", iconSprite, Color.white);
                 icon.preserveAspect = true;
                 var iconRt = (RectTransform)icon.transform;
-                UIFactory.Place(iconRt, new Vector2(0.5f, 1), new Vector2(0, -60), isSkin ? new Vector2(190, 142) : new Vector2(138, 138), new Vector2(0.5f, 1));
+                UIFactory.Place(iconRt, new Vector2(0.5f, 1), new Vector2(0, -60), isSkin ? new Vector2(176, 132) : new Vector2(130, 130), new Vector2(0.5f, 1));
                 UIFloatBob.Attach(iconRt, 4f, 0f, 2.2f, i * 0.8f);
 
-                string tag = p.id == ProductCatalog.CoinsMedium ? "POPULAR" : p.id == ProductCatalog.CoinsLarge ? "BEST VALUE" : isSkin ? "EXCLUSIVE" : null;
+                string tag = isSub ? "VIP SUB" : p.id == ProductCatalog.CoinsMedium ? "POPULAR" : p.id == ProductCatalog.CoinsLarge ? "BEST VALUE" : isSkin ? "EXCLUSIVE" : null;
                 if (tag != null)
                 {
-                    Color tagCol = p.id == ProductCatalog.CoinsLarge ? UIFactory.Good : isSkin ? UIFactory.Purple : UIFactory.Blue;
+                    Color tagCol = isSub ? UIFactory.Blue : p.id == ProductCatalog.CoinsLarge ? UIFactory.Good : isSkin ? UIFactory.Purple : UIFactory.Blue;
                     var tagPill = UIFactory.GlassPill(card.transform, "Tag", tagCol);
-                    UIFactory.Place((RectTransform)tagPill.transform, new Vector2(1, 1), new Vector2(-16, -24), new Vector2(176, 42), new Vector2(1, 1));
-                    var tagTxt = UIFactory.Label(tagPill.transform, tag, 24, Color.white);
+                    UIFactory.Place((RectTransform)tagPill.transform, new Vector2(1, 1), new Vector2(-16, -24), new Vector2(160, 40), new Vector2(1, 1));
+                    var tagTxt = UIFactory.Label(tagPill.transform, tag, 22, Color.white);
                     var trt = (RectTransform)tagTxt.transform; trt.anchorMin = Vector2.zero; trt.anchorMax = Vector2.one; trt.offsetMin = trt.offsetMax = Vector2.zero;
                 }
 
-                var title = UIFactory.Label(card.transform, p.title, 34, Color.white);
-                UIFactory.Place((RectTransform)title.transform, new Vector2(0.5f, 0), new Vector2(0, 200), new Vector2(380, 42));
+                var title = UIFactory.Label(card.transform, p.title, count >= 5 ? 30 : 34, Color.white);
+                UIFactory.Place((RectTransform)title.transform, new Vector2(0.5f, 0), new Vector2(0, 224), new Vector2(titleW, 40));
+
+                string kindStr = isSub ? "SUBSCRIPTION" : isSkin ? "NON-CONSUMABLE" : "CONSUMABLE";
+                Color kindCol = isSub ? UIFactory.Blue : isSkin ? UIFactory.Purple : UIFactory.TextMuted;
+                var kindLbl = UIFactory.Label(card.transform, kindStr, 20, kindCol);
+                UIFactory.Place((RectTransform)kindLbl.transform, new Vector2(0.5f, 0), new Vector2(0, 194), new Vector2(titleW, 28));
 
                 var whatPill = UIFactory.GlassPill(card.transform, "WhatPill", UIFactory.SlotDark);
-                UIFactory.Place((RectTransform)whatPill.transform, new Vector2(0.5f, 0), new Vector2(0, 140), new Vector2(364, 54));
-                if (isSkin)
+                UIFactory.Place((RectTransform)whatPill.transform, new Vector2(0.5f, 0), new Vector2(0, 134), new Vector2(pillW, 52));
+                if (isSkin || isSub)
                 {
-                    var what = UIFactory.Label(whatPill.transform, "Exclusive animated skin", 28, UIFactory.Accent);
+                    string whatStr = isSub ? "VIP + Full Energy" : "Exclusive animated skin";
+                    var what = UIFactory.Label(whatPill.transform, whatStr, isSub ? 25 : 24, UIFactory.Accent);
                     var wrt = (RectTransform)what.transform; wrt.anchorMin = Vector2.zero; wrt.anchorMax = Vector2.one;
                     wrt.offsetMin = Vector2.zero; wrt.offsetMax = Vector2.zero;
                 }
@@ -287,26 +327,26 @@ namespace TurtleBlaster
                 {
                     string amtStr = "+" + p.coins.ToString("N0");
                     float txtW = amtStr.Length * 18f + 4f;
-                    float totalW = 32f + 10f + txtW;
-                    float startX = -totalW * 0.5f;
+                    float totalW = 30f + 10f + txtW;
+                    float coinStartX = -totalW * 0.5f;
                     var whatCoin = UIFactory.Image(whatPill.transform, "WhatCoin", SpriteLibrary.Get("coin"), Color.white);
                     whatCoin.preserveAspect = true;
-                    UIFactory.Place((RectTransform)whatCoin.transform, new Vector2(0.5f, 0.5f), new Vector2(startX + 16f, 0), new Vector2(32, 32), new Vector2(0.5f, 0.5f));
-                    var what = UIFactory.Label(whatPill.transform, amtStr, 32, UIFactory.Accent, TextAnchor.MiddleLeft);
-                    UIFactory.Place((RectTransform)what.transform, new Vector2(0.5f, 0.5f), new Vector2(startX + 42f, 0), new Vector2(txtW + 24f, 44f), new Vector2(0f, 0.5f));
+                    UIFactory.Place((RectTransform)whatCoin.transform, new Vector2(0.5f, 0.5f), new Vector2(coinStartX + 15f, 0), new Vector2(30, 30), new Vector2(0.5f, 0.5f));
+                    var what = UIFactory.Label(whatPill.transform, amtStr, 30, UIFactory.Accent, TextAnchor.MiddleLeft);
+                    UIFactory.Place((RectTransform)what.transform, new Vector2(0.5f, 0.5f), new Vector2(coinStartX + 40f, 0), new Vector2(txtW + 24f, 44f), new Vector2(0f, 0.5f));
                 }
 
                 int index = i;
-                var btn = UIFactory.MakeButton(card.transform, "BUY", UIFactory.Good, () => ShopAction(index), new Vector2(350, 88), 38);
-                UIFactory.Place((RectTransform)btn.transform, new Vector2(0.5f, 0), new Vector2(0, 24), new Vector2(350, 88));
+                var btn = UIFactory.MakeButton(card.transform, "BUY", UIFactory.Good, () => ShopAction(index), new Vector2(btnW, 84), 34);
+                UIFactory.Place((RectTransform)btn.transform, new Vector2(0.5f, 0), new Vector2(0, 22), new Vector2(btnW, 84));
                 productButtons.Add(btn);
             }
 
             shopNote = UIFactory.Label(shopScreen, "", 28, UIFactory.TextMuted);
-            UIFactory.Place((RectTransform)shopNote.transform, new Vector2(0.5f, 0), new Vector2(0, 128), new Vector2(1700, 38));
+            UIFactory.Place((RectTransform)shopNote.transform, new Vector2(0.5f, 0), new Vector2(0, 124), new Vector2(1700, 38));
 
             var restore = UIFactory.MakeButton(shopScreen, "RESTORE PURCHASES", UIFactory.Panel, RestorePurchases, new Vector2(416, 66), 30);
-            UIFactory.Place((RectTransform)restore.transform, new Vector2(0.5f, 0), new Vector2(0, 44), new Vector2(416, 66));
+            UIFactory.Place((RectTransform)restore.transform, new Vector2(0.5f, 0), new Vector2(0, 42), new Vector2(416, 66));
         }
 
         public void ShowShop()
@@ -325,14 +365,12 @@ namespace TurtleBlaster
                 var p = products[i];
                 var b = productButtons[i];
                 bool ownedSkin = p.kind == ProductKind.Skin && SaveData.Current.OwnsSkin(p.skinId);
-                b.interactable = available && !ownedSkin;
-                UIFactory.SetButtonLabel(b, ownedSkin ? "OWNED" : available ? Services.Purchases.GetPriceString(p.id) : "UNAVAILABLE");
+                bool activeSub = p.kind == ProductKind.Subscription && SaveData.VipActiveThisSession;
+                b.interactable = available && !ownedSkin && !activeSub;
+                UIFactory.SetButtonLabel(b, ownedSkin ? "OWNED" : activeSub ? "VIP ACTIVE" : available ? Services.Purchases.GetPriceString(p.id) : "CONNECTING...");
             }
-            shopNote.text = !available
-                ? "Store is not configured in this build."
-                : Services.Purchases is MockPurchaseService
-                    ? "TEST STORE: purchases here are simulated - no real money is charged."
-                    : "";
+            shopNote.text = Services.Purchases.StoreStatus;
+            if (shopVipBadge != null) shopVipBadge.SetActive(SaveData.VipActiveThisSession);
         }
 
         public void ShopAction(int index)
@@ -346,7 +384,9 @@ namespace TurtleBlaster
                 {
                     AudioManager.Sfx("buy");
                     UIPunch.Trigger(productCards[index], 0.14f);
-                    Popup(p.kind == ProductKind.Coins ? "+" + p.coins.ToString("N0") + " COINS!" : "SKIN UNLOCKED!", UIFactory.Accent);
+                    Popup(p.kind == ProductKind.Coins ? "+" + p.coins.ToString("N0") + " COINS!"
+                        : p.kind == ProductKind.Subscription ? "TURBO VIP ACTIVATED!"
+                        : "SKIN UNLOCKED!", UIFactory.Accent);
                 }
                 else
                 {

@@ -145,6 +145,15 @@ namespace TurtleBlaster.EditorTools
             Debug.Log("[TurtleBlaster] Save data reset.");
         }
 
+        [MenuItem("Turtle Blaster/Debug/Clear All PlayerPrefs (Reset IAP & Save)")]
+        public static void ClearAllPlayerPrefs()
+        {
+            PlayerPrefs.DeleteAll();
+            PlayerPrefs.Save();
+            SaveData.ResetAll();
+            Debug.Log("[TurtleBlaster] All PlayerPrefs and IAP/Save state cleared.");
+        }
+
         [MenuItem("Turtle Blaster/Debug/Give 1000 Coins + 20 Parts")]
         public static void GiveCurrency()
         {

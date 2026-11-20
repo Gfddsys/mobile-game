@@ -87,7 +87,11 @@ namespace TurtleBlaster
             SaveData.Current.Changed += RefreshWallets;
         }
 
-        void OnDestroy() { SaveData.Current.Changed -= RefreshWallets; }
+        void OnDestroy()
+        {
+            SaveData.Current.Changed -= RefreshWallets;
+            Services.PurchasesChanged -= OnPurchasesChanged;
+        }
 
         // =====================================================================
         // Navigation
@@ -374,6 +378,9 @@ namespace TurtleBlaster
             UIFactory.Place((RectTransform)pauseBtn.transform, new Vector2(1, 1), new Vector2(-24, -20), new Vector2(98, 98));
             var pIcon = UIFactory.Image(pauseBtn.transform, "PauseIcon", SpriteLibrary.Get("ui_pause"), Color.white);
             UIFactory.Place((RectTransform)pIcon.transform, new Vector2(0.5f, 0.5f), new Vector2(0, 3), new Vector2(44, 44));
+
+            var snapBtn = UIFactory.MakeButton(hud, "SNAP", UIFactory.Blue, () => gm.CaptureAndShowScreenshot(), new Vector2(98, 66), 26);
+            UIFactory.Place((RectTransform)snapBtn.transform, new Vector2(1, 1), new Vector2(-24, -128), new Vector2(98, 66));
 
             BuildTouchControls(hud);
             UIPanelMotion.Attach(hud, null, 0.14f);
@@ -672,6 +679,11 @@ namespace TurtleBlaster
             musicBtn = UIFactory.MakeButton(menu, "MUSIC ON", UIFactory.Panel, () => { var s = SaveData.Current; s.musicOn = !s.musicOn; s.Save(); }, new Vector2(226, 62), 30);
             UIFactory.Place((RectTransform)musicBtn.transform, new Vector2(1, 1), new Vector2(-36, -104), new Vector2(226, 62));
 
+            var shotBtn = UIFactory.MakeButton(menu, "SCREENSHOT", UIFactory.Blue, () => gm.CaptureAndShowScreenshot(), new Vector2(226, 62), 26);
+            UIFactory.Place((RectTransform)shotBtn.transform, new Vector2(1, 1), new Vector2(-278, -178), new Vector2(226, 62));
+            var shareShotBtn = UIFactory.MakeButton(menu, "SHARE SHOT", UIFactory.Good, () => gm.ShareLastOrCaptureScreenshot(), new Vector2(226, 62), 26);
+            UIFactory.Place((RectTransform)shareShotBtn.transform, new Vector2(1, 1), new Vector2(-36, -178), new Vector2(226, 62));
+
             // Top-left energy card + Daily Rewards
             var eBox = UIFactory.PanelBox(menu, "EnergyBox", UIFactory.CardBg);
             UIFactory.Place((RectTransform)eBox.transform, new Vector2(0, 1), new Vector2(36, -24), new Vector2(468, 178));
@@ -913,6 +925,11 @@ namespace TurtleBlaster
             summaryTitle = UIFactory.Label(panel.transform, "WIPEOUT!", 84, UIFactory.Bad, TextAnchor.UpperCenter);
             summaryTitle.lineSpacing = 0.92f;
             UIFactory.Place((RectTransform)summaryTitle.transform, new Vector2(0.5f, 1), new Vector2(0, -24), new Vector2(900, 165));
+
+            var sumShotBtn = UIFactory.MakeButton(panel.transform, "SCREENSHOT", UIFactory.Blue, () => gm.CaptureAndShowScreenshot(), new Vector2(216, 72), 26);
+            UIFactory.Place((RectTransform)sumShotBtn.transform, new Vector2(0, 1), new Vector2(36, -30), new Vector2(216, 72));
+            var sumShareBtn = UIFactory.MakeButton(panel.transform, "SHARE", UIFactory.Good, () => gm.ShareLastOrCaptureScreenshot(), new Vector2(176, 72), 26);
+            UIFactory.Place((RectTransform)sumShareBtn.transform, new Vector2(0, 1), new Vector2(266, -30), new Vector2(176, 72));
 
             // polaroid style snapshot of the crash (GDD 2: snapshot of the funniest fall)
             var frame = UIFactory.PanelBox(panel.transform, "Polaroid", Color.white);

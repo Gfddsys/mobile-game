@@ -85,6 +85,9 @@ namespace TurtleBlaster
 
         public event Action Changed;
 
+        /// <summary>Session-only subscription flag (real status must come from store/backend).</summary>
+        public static bool VipActiveThisSession;
+
         static SaveData _current;
 
         public static SaveData Current
@@ -410,6 +413,7 @@ namespace TurtleBlaster
         public static void ResetAll()
         {
             PlayerPrefs.DeleteKey(Key);
+            VipActiveThisSession = false;
             _current = Repair(new SaveData());
             _current.Changed?.Invoke();
         }
