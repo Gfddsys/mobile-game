@@ -521,17 +521,31 @@ namespace TurtleBlaster
             return mins.ToString("00") + ":" + secs.ToString("00");
         }
 
+        int lastEnergyVal = -1, lastEnergyNextSec = -1;
+        bool lastEnergyCanAd, lastEnergyAdReady;
+
         public void RefreshEnergyUI()
         {
             var save = SaveData.Current;
             int e = save.energy;
             bool full = e >= SaveData.MaxEnergy;
+            bool adReady = Services.Ads.IsRewardedReady;
             bool canAd = gm != null && gm.CanWatchEnergyAd;
+            int nextSec = full ? 0 : Mathf.CeilToInt((float)save.GetTimeUntilNextEnergy().TotalSeconds);
+
+            if (e == lastEnergyVal && nextSec == lastEnergyNextSec && canAd == lastEnergyCanAd && adReady == lastEnergyAdReady)
+                return;
+
+            lastEnergyVal = e;
+            lastEnergyNextSec = nextSec;
+            lastEnergyCanAd = canAd;
+            lastEnergyAdReady = adReady;
+
             string energyStr = "ENERGY " + e + "/" + SaveData.MaxEnergy;
             string nextStr = full ? "FULL" : "Next +1 in " + FormatCountdown(save.GetTimeUntilNextEnergy());
             string fullStr = full ? "FULL" : "Full in " + FormatCountdown(save.GetTimeUntilFullEnergy());
             Color timerCol = e == 0 ? UIFactory.Bad : (full ? UIFactory.Good : new Color(0.8f, 0.9f, 1f));
-            string adLabel = full ? "ENERGY FULL" : (Services.Ads.IsRewardedReady ? "+1 ENERGY (AD)" : "AD LOADING...");
+            string adLabel = full ? "ENERGY FULL" : (adReady ? "+1 ENERGY (AD)" : "AD LOADING...");
             Color adCol = canAd ? new Color(0.85f, 0.55f, 0.1f) : new Color(0.35f, 0.35f, 0.45f);
 
             if (menuEnergyText != null) menuEnergyText.text = energyStr;

@@ -23,8 +23,10 @@ namespace TurtleBlaster
         Image fuelFill, stuntFill;
         RectTransform touchRoot, fuelBarRoot, stuntBarRoot, coinIconRt, partIconRt, shieldPillRt, magnetPillRt, biomeBannerRt;
         CanvasGroup biomeBannerGroup;
-        float displayedScore, biomeBannerTimer;
-        int lastHudCoins, lastHudParts, lastHudCombo, lastHudBiome = -1, lastHudShield = -1, lastHudMagnetSec = -1;
+        float displayedScore, biomeBannerTimer, energyUiPollTimer;
+        int lastHudDist = -1, lastHudScore = -1, lastHudCoins = -1, lastHudParts = -1, lastHudCombo = -1;
+        int lastHudMissionIdx = -1, lastHudMissionProg = -1;
+        int lastHudBiome = -1, lastHudShield = -1, lastHudMagnetSec = -1;
 
         // menu widgets
         Text bestText, menuMissionText, menuMissionRewardText;
@@ -116,9 +118,13 @@ namespace TurtleBlaster
         {
             HideAll();
             displayedScore = 0f;
-            lastHudCoins = 0;
-            lastHudParts = 0;
-            lastHudCombo = 0;
+            lastHudDist = -1;
+            lastHudScore = -1;
+            lastHudCoins = -1;
+            lastHudParts = -1;
+            lastHudCombo = -1;
+            lastHudMissionIdx = -1;
+            lastHudMissionProg = -1;
             lastHudBiome = -1;
             lastHudShield = -1;
             lastHudMagnetSec = -1;
@@ -420,43 +426,77 @@ namespace TurtleBlaster
         void Update()
         {
             if (gm == null) return;
+            float udt = Mathf.Min(Time.unscaledDeltaTime, 0.05f);
             UpdateExtras();
             if (menu.gameObject.activeSelf || summary.gameObject.activeSelf || pause.gameObject.activeSelf ||
                 (energyOverlay != null && energyOverlay.gameObject.activeSelf))
             {
-                RefreshEnergyUI();
+                energyUiPollTimer += udt;
+                if (energyUiPollTimer >= 0.25f)
+                {
+                    energyUiPollTimer = 0f;
+                    RefreshEnergyUI();
+                }
             }
             if (!hud.gameObject.activeSelf) return;
             var p = gm.Player;
             var s = gm.Stats;
             if (s == null) return;
 
-            float udt = Mathf.Min(Time.unscaledDeltaTime, 0.05f);
-            distanceText.text = Mathf.FloorToInt(s.distance) + " m";
+            int distInt = Mathf.FloorToInt(s.distance);
+            if (distInt != lastHudDist)
+            {
+                lastHudDist = distInt;
+                distanceText.text = distInt + " m";
+            }
+
             if (Mathf.Abs(s.score - displayedScore) <= 1f) displayedScore = s.score;
             else displayedScore = Mathf.Lerp(displayedScore, s.score, 1f - Mathf.Exp(-16f * udt));
-            scoreText.text = "SCORE " + Mathf.RoundToInt(displayedScore);
-            comboText.text = gm.Combo > 0 ? "COMBO x" + gm.ComboMultiplier.ToString("0.00") : "";
-            if (gm.Combo > lastHudCombo) UIPunch.Trigger(comboText.transform, 0.24f);
-            lastHudCombo = gm.Combo;
-            coinText.text = s.coins.ToString();
+            int scoreInt = Mathf.RoundToInt(displayedScore);
+            if (scoreInt != lastHudScore)
+            {
+                lastHudScore = scoreInt;
+                scoreText.text = "SCORE " + scoreInt;
+            }
+
+            if (gm.Combo != lastHudCombo)
+            {
+                comboText.text = gm.Combo > 0 ? "COMBO x" + gm.ComboMultiplier.ToString("0.00") : "";
+                if (lastHudCombo >= 0 && gm.Combo > lastHudCombo) UIPunch.Trigger(comboText.transform, 0.24f);
+                lastHudCombo = gm.Combo;
+            }
+
             if (s.coins != lastHudCoins)
             {
-                UIPunch.Trigger(coinText.transform, 0.24f);
-                UIPunch.Trigger(coinIconRt, 0.28f);
+                coinText.text = s.coins.ToString();
+                if (lastHudCoins >= 0)
+                {
+                    UIPunch.Trigger(coinText.transform, 0.24f);
+                    UIPunch.Trigger(coinIconRt, 0.28f);
+                }
                 lastHudCoins = s.coins;
             }
-            partText.text = s.parts.ToString();
+
             if (s.parts != lastHudParts)
             {
-                UIPunch.Trigger(partText.transform, 0.24f);
-                UIPunch.Trigger(partIconRt, 0.28f);
+                partText.text = s.parts.ToString();
+                if (lastHudParts >= 0)
+                {
+                    UIPunch.Trigger(partText.transform, 0.24f);
+                    UIPunch.Trigger(partIconRt, 0.28f);
+                }
                 lastHudParts = s.parts;
             }
 
-            var m = SaveData.Current.GetCurrentMission();
+            var save = SaveData.Current;
+            var m = save.GetCurrentMission();
             int prog = Mathf.Min(m.GetProgress(s), m.target);
-            missionHudText.text = "MISSION: " + m.title + " (" + prog + "/" + m.target + ")";
+            if (save.missionIndex != lastHudMissionIdx || prog != lastHudMissionProg)
+            {
+                lastHudMissionIdx = save.missionIndex;
+                lastHudMissionProg = prog;
+                missionHudText.text = "MISSION: " + m.title + " (" + prog + "/" + m.target + ")";
+            }
 
             if (p != null)
             {

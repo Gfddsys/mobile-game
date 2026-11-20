@@ -43,6 +43,7 @@ namespace TurtleBlaster
         PreviousRunGhost activeGhost;
         float runElapsedTime;
         float nextGhostSampleTime;
+        static readonly System.Collections.Generic.List<Collider2D> attractHits = new System.Collections.Generic.List<Collider2D>(24);
         readonly System.Collections.Generic.List<GameObject> owned = new System.Collections.Generic.List<GameObject>();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -234,20 +235,22 @@ namespace TurtleBlaster
             bool wantFlipCCW = false;
             bool wantFlipCW = false;
 
-            // Scan ahead for hazards, rails, and pickups
-            var hits = Physics2D.OverlapBoxAll(
+            // Scan ahead for hazards, rails, and pickups (zero-allocation overlap buffer)
+            int hitCount = Physics2D.OverlapBox(
                 pos + new Vector2(vx * 0.42f, 1.0f),
                 new Vector2(vx * 0.95f + 3f, 4.5f),
-                0f);
+                0f,
+                ContactFilter2D.noFilter,
+                attractHits);
 
             float nearestGroundHazardDx = float.MaxValue;
             bool nearestGroundIsHeavy = false;
             bool airHazardOverhead = false;
             float nearestRailDx = float.MaxValue;
 
-            for (int i = 0; i < hits.Length; i++)
+            for (int i = 0; i < hitCount; i++)
             {
-                var c = hits[i];
+                var c = attractHits[i];
                 if (c == null) continue;
 
                 if (c.TryGetComponent<Hazard>(out var hz))

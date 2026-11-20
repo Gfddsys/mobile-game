@@ -40,20 +40,26 @@ namespace TurtleBlaster
         void Update()
         {
             var gm = GameManager.Instance;
-            if (gm != null && gm.Player != null && gm.Player.Alive && gm.Player.MagnetActive &&
-                (type == PickupType.Coin || type == PickupType.Part))
+            var p = transform.position;
+            if (gm != null)
             {
-                Vector3 target = gm.Player.transform.position + Vector3.up * 0.45f;
-                float dist = Vector2.Distance(transform.position, target);
-                if (dist < 8.5f) magnetized = true;
-                if (magnetized)
+                if (gm.Player != null && gm.Player.Alive && gm.Player.MagnetActive &&
+                    (type == PickupType.Coin || type == PickupType.Part))
                 {
-                    transform.position = Vector3.MoveTowards(transform.position, target, 24f * Time.deltaTime);
-                    return;
+                    Vector3 target = gm.Player.transform.position + Vector3.up * 0.45f;
+                    float dx = p.x - target.x, dy = p.y - target.y;
+                    if (dx * dx + dy * dy < 72.25f) magnetized = true; // 8.5^2
+                    if (magnetized)
+                    {
+                        transform.position = Vector3.MoveTowards(p, target, 24f * Time.deltaTime);
+                        return;
+                    }
                 }
+                // Skip per-frame transform bobbing for pickups far outside the camera view
+                if (gm.Cam != null && Mathf.Abs(p.x - gm.Cam.transform.position.x) > 22f)
+                    return;
             }
 
-            var p = transform.position;
             p.y = baseY + Mathf.Sin(Time.time * 4f + phase) * 0.06f;
             transform.position = p;
         }

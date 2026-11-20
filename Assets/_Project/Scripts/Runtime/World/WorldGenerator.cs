@@ -26,6 +26,11 @@ namespace TurtleBlaster
         readonly Dictionary<int, GameObject> chunks = new Dictionary<int, GameObject>();
         readonly List<int> removeBuffer = new List<int>();
 
+        static readonly List<Vector3> meshVerts = new List<Vector3>(1024);
+        static readonly List<Vector2> meshUVs = new List<Vector2>(1024);
+        static readonly List<Color32> meshCols = new List<Color32>(1024);
+        static readonly List<int> meshTris = new List<int>(1536);
+
         Transform chunkRoot, spawnedRoot;
         PhysicsMaterial2D groundMat, railMat, boulderMat;
 
@@ -51,7 +56,7 @@ namespace TurtleBlaster
         {
             seed = newSeed;
             hillRng = new System.Random(seed);
-            foreach (var kv in chunks) if (kv.Value != null) Destroy(kv.Value);
+            foreach (var kv in chunks) DestroyChunk(kv.Value);
             chunks.Clear();
             for (int i = spawnedRoot.childCount - 1; i >= 0; i--) Destroy(spawnedRoot.GetChild(i).gameObject);
 
@@ -62,6 +67,14 @@ namespace TurtleBlaster
             cps.Add(new Vector2(44f, -3.5f));
             lastWasUp = false;
             Despawner.CutoffX = float.NegativeInfinity;
+        }
+
+        static void DestroyChunk(GameObject chunkGo)
+        {
+            if (chunkGo == null) return;
+            if (chunkGo.TryGetComponent<MeshFilter>(out var mf) && mf.sharedMesh != null)
+                Destroy(mf.sharedMesh);
+            Destroy(chunkGo);
         }
 
         /// <summary>Removes obstacles between x0 and x1 (used to give a revived player a safe restart).</summary>
@@ -108,7 +121,7 @@ namespace TurtleBlaster
 
             removeBuffer.Clear();
             foreach (var kv in chunks) if (kv.Key < first - 1) removeBuffer.Add(kv.Key);
-            foreach (var k in removeBuffer) { Destroy(chunks[k]); chunks.Remove(k); }
+            foreach (var k in removeBuffer) { DestroyChunk(chunks[k]); chunks.Remove(k); }
         }
 
         // -------------------------------------------------------------
@@ -152,16 +165,16 @@ namespace TurtleBlaster
             }
             float bottom = Mathf.Floor((minY - 8f) * 16f) / 16f;
 
-            // ---- simple pixel-style visual mesh: 16-PPU stepped columns with clean flat turf & dirt bands ----
+            // ---- simple pixel-style visual mesh: run-length merged 16-PPU columns (zero array allocs) ----
             const float pixSize = 1f / 16f; // 16 pixels per world unit
             const int turfPx = 7;           // uniform 7px (~0.44m) turf strip
             int colsCount = Mathf.RoundToInt(w / pixSize);
             int basePixX = Mathf.RoundToInt(x0 * 16f);
 
-            var allV = new Vector3[colsCount * 8];
-            var allUV = new Vector2[colsCount * 8];
-            var allC = new Color32[colsCount * 8];
-            var tris = new int[colsCount * 12];
+            meshVerts.Clear();
+            meshUVs.Clear();
+            meshCols.Clear();
+            meshTris.Clear();
 
             const float texW = SpriteLibrary.TerrainTexWidth;
             const float texH = SpriteLibrary.TerrainTexHeight;
@@ -169,79 +182,92 @@ namespace TurtleBlaster
             const float vTurfBot = 152f / texH;
             const float vDirtTopRow = 151.5f;
 
-            for (int c = 0; c < colsCount; c++)
+            int c = 0;
+            while (c < colsCount)
             {
-                float lx0 = c * pixSize;
-                float lx1 = (c + 1) * pixSize;
-                float wx = x0 + lx0 + pixSize * 0.5f;
                 int worldPixX = basePixX + c;
+                float wx0 = x0 + (c + 0.5f) * pixSize;
+                int yPixInt = Mathf.RoundToInt(HeightAt(wx0) * 16f);
+                bool alt = (((worldPixX >> 3) & 1) == 0);
 
-                float rawY = HeightAt(wx);
-                float yTop = Mathf.Round(rawY * 16f) / 16f;
+                // Merge consecutive 16-PPU columns that share the exact same pixel height and turf stripe
+                int cEnd = c + 1;
+                while (cEnd < colsCount)
+                {
+                    int nextWorldPix = basePixX + cEnd;
+                    bool nextAlt = (((nextWorldPix >> 3) & 1) == 0);
+                    if (nextAlt != alt) break;
+                    int nextYPix = Mathf.RoundToInt(HeightAt(x0 + (cEnd + 0.5f) * pixSize) * 16f);
+                    if (nextYPix != yPixInt) break;
+                    cEnd++;
+                }
+
+                float lx0 = c * pixSize;
+                float lx1 = cEnd * pixSize;
+                float wxMid = x0 + (lx0 + lx1) * 0.5f;
+                float yTop = yPixInt * pixSize;
                 float yMid = yTop - turfPx * pixSize;
 
-                Color biomeTint = Color.Lerp(Color.white, ParallaxBackground.EvaluateBiomeTint(wx, out _), 0.32f);
-                LevelBiomes.EvaluateGroundColors(wx, out var gA, out var gB, out var dTop, out var dBot);
-                Color32 grassA = (Color)gA * biomeTint;
-                Color32 grassB = (Color)gB * biomeTint;
+                Color biomeTint = Color.Lerp(Color.white, ParallaxBackground.EvaluateBiomeTint(wxMid, out _), 0.32f);
+                LevelBiomes.EvaluateGroundColors(wxMid, out var gA, out var gB, out var dTop, out var dBot);
+                Color32 turfCol = (Color)(alt ? gA : gB) * biomeTint;
                 Color32 dirtTop = (Color)dTop * biomeTint;
                 Color32 dirtBot = (Color)dBot * biomeTint;
 
-                bool alt = (((worldPixX >> 3) & 1) == 0); // simple 0.5m alternating turf stripes
-                Color32 turfCol = alt ? grassA : grassB;
+                float u0 = (basePixX + c) / texW;
+                float u1 = (basePixX + cEnd) / texW;
 
-                float u0 = worldPixX / texW;
-                float u1 = (worldPixX + 1) / texW;
+                int vi = meshVerts.Count;
 
-                // Top quad (clean turf strip with 1px dark top & bottom outline)
-                int vi = c * 8;
-                allV[vi + 0] = new Vector3(lx0, yTop, 0f);
-                allV[vi + 1] = new Vector3(lx1, yTop, 0f);
-                allV[vi + 2] = new Vector3(lx1, yMid, 0f);
-                allV[vi + 3] = new Vector3(lx0, yMid, 0f);
+                // Top quad (turf strip)
+                meshVerts.Add(new Vector3(lx0, yTop, 0f));
+                meshVerts.Add(new Vector3(lx1, yTop, 0f));
+                meshVerts.Add(new Vector3(lx1, yMid, 0f));
+                meshVerts.Add(new Vector3(lx0, yMid, 0f));
 
-                allUV[vi + 0] = new Vector2(u0, vTurfTop);
-                allUV[vi + 1] = new Vector2(u1, vTurfTop);
-                allUV[vi + 2] = new Vector2(u1, vTurfBot);
-                allUV[vi + 3] = new Vector2(u0, vTurfBot);
+                meshUVs.Add(new Vector2(u0, vTurfTop));
+                meshUVs.Add(new Vector2(u1, vTurfTop));
+                meshUVs.Add(new Vector2(u1, vTurfBot));
+                meshUVs.Add(new Vector2(u0, vTurfBot));
 
-                allC[vi + 0] = turfCol;
-                allC[vi + 1] = turfCol;
-                allC[vi + 2] = turfCol;
-                allC[vi + 3] = turfCol;
+                meshCols.Add(turfCol);
+                meshCols.Add(turfCol);
+                meshCols.Add(turfCol);
+                meshCols.Add(turfCol);
 
-                // Bottom quad (clean flat-shaded dirt block)
+                // Bottom quad (flat-shaded dirt block)
                 float dirtDepthPixels = (yMid - bottom) * 16f;
                 float vDirt0 = vDirtTopRow / texH;
                 float vDirt1 = (vDirtTopRow - dirtDepthPixels) / texH;
 
-                allV[vi + 4] = new Vector3(lx0, yMid, 0f);
-                allV[vi + 5] = new Vector3(lx1, yMid, 0f);
-                allV[vi + 6] = new Vector3(lx1, bottom, 0f);
-                allV[vi + 7] = new Vector3(lx0, bottom, 0f);
+                meshVerts.Add(new Vector3(lx0, yMid, 0f));
+                meshVerts.Add(new Vector3(lx1, yMid, 0f));
+                meshVerts.Add(new Vector3(lx1, bottom, 0f));
+                meshVerts.Add(new Vector3(lx0, bottom, 0f));
 
-                allUV[vi + 4] = new Vector2(u0, vDirt0);
-                allUV[vi + 5] = new Vector2(u1, vDirt0);
-                allUV[vi + 6] = new Vector2(u1, vDirt1);
-                allUV[vi + 7] = new Vector2(u0, vDirt1);
+                meshUVs.Add(new Vector2(u0, vDirt0));
+                meshUVs.Add(new Vector2(u1, vDirt0));
+                meshUVs.Add(new Vector2(u1, vDirt1));
+                meshUVs.Add(new Vector2(u0, vDirt1));
 
-                allC[vi + 4] = dirtTop;
-                allC[vi + 5] = dirtTop;
-                allC[vi + 6] = dirtBot;
-                allC[vi + 7] = dirtBot;
+                meshCols.Add(dirtTop);
+                meshCols.Add(dirtTop);
+                meshCols.Add(dirtBot);
+                meshCols.Add(dirtBot);
 
-                int ti = c * 12;
-                tris[ti + 0] = vi + 0; tris[ti + 1] = vi + 1; tris[ti + 2] = vi + 2;
-                tris[ti + 3] = vi + 0; tris[ti + 4] = vi + 2; tris[ti + 5] = vi + 3;
-                tris[ti + 6] = vi + 4; tris[ti + 7] = vi + 5; tris[ti + 8] = vi + 6;
-                tris[ti + 9] = vi + 4; tris[ti + 10] = vi + 6; tris[ti + 11] = vi + 7;
+                meshTris.Add(vi + 0); meshTris.Add(vi + 1); meshTris.Add(vi + 2);
+                meshTris.Add(vi + 0); meshTris.Add(vi + 2); meshTris.Add(vi + 3);
+                meshTris.Add(vi + 4); meshTris.Add(vi + 5); meshTris.Add(vi + 6);
+                meshTris.Add(vi + 4); meshTris.Add(vi + 6); meshTris.Add(vi + 7);
+
+                c = cEnd;
             }
 
             var mesh = new Mesh { name = "TerrainChunk" };
-            mesh.vertices = allV;
-            mesh.uv = allUV;
-            mesh.colors32 = allC;
-            mesh.SetTriangles(tris, 0);
+            mesh.SetVertices(meshVerts);
+            mesh.SetUVs(0, meshUVs);
+            mesh.SetColors(meshCols);
+            mesh.SetTriangles(meshTris, 0);
             mesh.RecalculateBounds();
             go.AddComponent<MeshFilter>().sharedMesh = mesh;
             var mr = go.AddComponent<MeshRenderer>();

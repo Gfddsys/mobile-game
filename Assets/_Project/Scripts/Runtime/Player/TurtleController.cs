@@ -104,6 +104,9 @@ namespace TurtleBlaster
         Gradient superTrailGrad, boostTrailGrad, thrustTrailGrad;
         readonly List<(SpriteRenderer sr, float age)> ghosts = new List<(SpriteRenderer, float)>();
         readonly List<(SpriteRenderer sr, float age, float maxScale)> turboRings = new List<(SpriteRenderer, float, float)>();
+        readonly Stack<SpriteRenderer> ghostPool = new Stack<SpriteRenderer>(8);
+        readonly Stack<SpriteRenderer> ringPool = new Stack<SpriteRenderer>(4);
+        static readonly List<Collider2D> closeCallHits = new List<Collider2D>(16);
 
         // ================================================================
         // Construction
@@ -271,16 +274,16 @@ namespace TurtleBlaster
         void BuildParticles()
         {
             var warm = Gradient2(PixelCanvas.C("#fff3a0"), PixelCanvas.C("#ff7a1a"), PixelCanvas.C("#5b5b6b"));
-            exhaust = MakeParticles("Exhaust", new Vector2(-1.3f, 0.3f), Quaternion.Euler(0, -90, 0), 0.45f, 5f, 0.22f, warm, 200, 8f);
+            exhaust = MakeParticles("Exhaust", new Vector2(-1.3f, 0.3f), Quaternion.Euler(0, -90, 0), 0.45f, 5f, 0.22f, warm, 90, 8f);
 
             var sparkGrad = Gradient2(PixelCanvas.C("#ffffff"), PixelCanvas.C("#ffd23f"), PixelCanvas.C("#ff7a1a"));
-            sparks = MakeParticles("Sparks", new Vector2(0f, -0.35f), Quaternion.Euler(-90, 0, 0), 0.4f, 4.5f, 0.1f, sparkGrad, 120, 60f);
+            sparks = MakeParticles("Sparks", new Vector2(0f, -0.35f), Quaternion.Euler(-90, 0, 0), 0.4f, 4.5f, 0.1f, sparkGrad, 60, 60f);
 
             var dustGrad = Gradient2(PixelCanvas.C("#e8dcc0"), PixelCanvas.C("#c9b891"), PixelCanvas.C("#a39373"));
-            dust = MakeParticles("Dust", new Vector2(0f, -0.35f), Quaternion.Euler(-90, 0, 0), 0.5f, 2.5f, 0.28f, dustGrad, 80, 70f);
+            dust = MakeParticles("Dust", new Vector2(0f, -0.35f), Quaternion.Euler(-90, 0, 0), 0.5f, 2.5f, 0.28f, dustGrad, 45, 70f);
 
             var rainbow = Gradient2(PixelCanvas.C("#24f0ff"), PixelCanvas.C("#ff3d9a"), PixelCanvas.C("#ffd93d"));
-            boostTrail = MakeParticles("BoostTrail", new Vector2(-1.05f, 0.22f), Quaternion.Euler(0, -90, 0), 0.42f, 4.75f, 0.19f, rainbow, 180, 26f);
+            boostTrail = MakeParticles("BoostTrail", new Vector2(-1.05f, 0.22f), Quaternion.Euler(0, -90, 0), 0.42f, 4.75f, 0.19f, rainbow, 80, 26f);
             var btMain = boostTrail.main;
             btMain.startSpeed = new ParticleSystem.MinMaxCurve(3.5f, 6.0f);
             btMain.startSize = new ParticleSystem.MinMaxCurve(0.14f, 0.24f);
@@ -530,11 +533,11 @@ namespace TurtleBlaster
         void CheckCloseCalls()
         {
             if (hitInvulnTimer > 0f || GameManager.Instance == null || GameManager.Instance.State != GameState.Playing) return;
-            var hits = Physics2D.OverlapCircleAll(rb.position + new Vector2(-0.3f, 0.7f), 2.1f);
-            for (int i = 0; i < hits.Length; i++)
+            int hitCount = Physics2D.OverlapCircle(rb.position + new Vector2(-0.3f, 0.7f), 2.1f, ContactFilter2D.noFilter, closeCallHits);
+            for (int i = 0; i < hitCount; i++)
             {
-                var c = hits[i];
-                if (c == null || !c.TryGetComponent<Hazard>(out var hz)) continue;
+                var c = closeCallHits[i];
+                if (c == null || !c.isTrigger || !c.TryGetComponent<Hazard>(out var hz)) continue;
                 if (!hz.isAir || hz.closeCallCounted) continue;
                 float dx = rb.position.x - hz.transform.position.x;
                 // Trigger once the turtle safely clears the hazard's center horizontally while passing close by
@@ -807,12 +810,21 @@ namespace TurtleBlaster
         void SpawnTurboRing(float maxScale)
         {
             if (thrusterT == null) return;
-            var go = new GameObject("TurboRing");
-            go.transform.SetPositionAndRotation(thrusterT.TransformPoint(new Vector3(-0.08f, 0f, 0f)), transform.rotation);
-            go.transform.localScale = new Vector3(0.55f, 0.55f, 1f);
-            var sr = go.AddComponent<SpriteRenderer>();
-            sr.sprite = SpriteLibrary.Get("turbo_ring");
-            sr.sortingOrder = 8;
+            SpriteRenderer sr = null;
+            while (ringPool.Count > 0 && sr == null) sr = ringPool.Pop();
+            if (sr == null)
+            {
+                var go = new GameObject("TurboRing");
+                sr = go.AddComponent<SpriteRenderer>();
+                sr.sprite = SpriteLibrary.Get("turbo_ring");
+                sr.sortingOrder = 8;
+            }
+            else
+            {
+                sr.gameObject.SetActive(true);
+            }
+            sr.transform.SetPositionAndRotation(thrusterT.TransformPoint(new Vector3(-0.08f, 0f, 0f)), transform.rotation);
+            sr.transform.localScale = new Vector3(0.55f, 0.55f, 1f);
             Color rc = EvaluateTurboPalette(Time.time * 1.4f);
             rc.a = 0.85f;
             sr.color = rc;
@@ -829,7 +841,8 @@ namespace TurtleBlaster
                 age += dt;
                 if (age >= life)
                 {
-                    Destroy(sr.gameObject);
+                    sr.gameObject.SetActive(false);
+                    ringPool.Push(sr);
                     turboRings.RemoveAt(i);
                 }
                 else
@@ -848,12 +861,21 @@ namespace TurtleBlaster
         void SpawnGhost()
         {
             if (turtleSr == null) return;
-            var go = new GameObject("TurtleGhost");
-            go.transform.SetPositionAndRotation(turtleT.position, turtleT.rotation);
-            go.transform.localScale = turtleT.lossyScale;
-            var sr = go.AddComponent<SpriteRenderer>();
+            SpriteRenderer sr = null;
+            while (ghostPool.Count > 0 && sr == null) sr = ghostPool.Pop();
+            if (sr == null)
+            {
+                var go = new GameObject("TurtleGhost");
+                sr = go.AddComponent<SpriteRenderer>();
+                sr.sortingOrder = 7;
+            }
+            else
+            {
+                sr.gameObject.SetActive(true);
+            }
+            sr.transform.SetPositionAndRotation(turtleT.position, turtleT.rotation);
+            sr.transform.localScale = turtleT.lossyScale;
             sr.sprite = turtleSr.sprite;
-            sr.sortingOrder = 7;
             Color gc = SuperBoost
                 ? EvaluateTurboPalette(Time.time * 1.5f)
                 : new Color(0.4f, 0.9f, 1f, 1f);
@@ -872,7 +894,8 @@ namespace TurtleBlaster
                 age += dt;
                 if (age >= life)
                 {
-                    Destroy(sr.gameObject);
+                    sr.gameObject.SetActive(false);
+                    ghostPool.Push(sr);
                     ghosts.RemoveAt(i);
                 }
                 else
@@ -890,9 +913,19 @@ namespace TurtleBlaster
             for (int i = 0; i < ghosts.Count; i++)
                 if (ghosts[i].sr != null) Destroy(ghosts[i].sr.gameObject);
             ghosts.Clear();
+            while (ghostPool.Count > 0)
+            {
+                var sr = ghostPool.Pop();
+                if (sr != null) Destroy(sr.gameObject);
+            }
             for (int i = 0; i < turboRings.Count; i++)
                 if (turboRings[i].sr != null) Destroy(turboRings[i].sr.gameObject);
             turboRings.Clear();
+            while (ringPool.Count > 0)
+            {
+                var sr = ringPool.Pop();
+                if (sr != null) Destroy(sr.gameObject);
+            }
         }
 
         void ApplyDuck(bool duck)
